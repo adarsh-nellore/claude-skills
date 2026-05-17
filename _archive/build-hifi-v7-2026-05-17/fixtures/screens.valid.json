@@ -1,0 +1,76 @@
+{
+  "screens": [
+    {
+      "path": "/",
+      "intent": "Redirect to the dashboard",
+      "complexity": "trivial",
+      "trivial": true,
+      "redirectTo": "/dashboard"
+    },
+    {
+      "path": "/dashboard",
+      "intent": "Cross-submission conflict summary, deadline alerts, activity feed, new-guidance banner",
+      "layout": "workspace",
+      "pageTitle": "Dashboard",
+      "complexity": "simple",
+      "primaryRegions": ["page_header", "kpi_grid", "banner", "activity_feed"],
+      "agentInvolvement": "ranked_list",
+      "requiredMockEntities": ["submissions", "guidanceEvents", "impactItems", "auditLog"]
+    },
+    {
+      "path": "/submissions",
+      "intent": "Active dossiers index with conflict-count badges",
+      "layout": "workspace",
+      "pageTitle": "Submissions",
+      "complexity": "simple",
+      "primaryRegions": ["page_header", "filter_bar", "table"],
+      "requiredMockEntities": ["submissions"]
+    },
+    {
+      "path": "/submissions/[submissionId]/sections/[sectionId]",
+      "intent": "Document editor with amber annotations, URL-param-driven side panel and memo drawer",
+      "layout": "editor",
+      "breadcrumb": ["Submissions", "Submission", "Section"],
+      "complexity": "compound",
+      "primaryRegions": ["banner", "document_viewer", "side_panel", "memo_drawer", "nav_tree"],
+      "agentInvolvement": "rationale_overlay",
+      "requiredMockEntities": ["submissionSections", "impactItems", "changedExcerpts", "assessments", "decisionRecords"],
+      "urlParams": [
+        { "name": "panel", "purpose": "When set to an ImpactItem id, opens GuidanceSidePanel pre-scrolled to that item" },
+        { "name": "memo", "purpose": "When set to an ImpactItem id, opens DecisionMemoDrawer over the document backdrop" }
+      ],
+      "compound": {
+        "children": [
+          {
+            "name": "DocumentViewer",
+            "intent": "Render section prose with amber-underline annotations at annotationOffset/annotationLength ranges from ImpactItem records",
+            "propContract": "{ section: SubmissionSection; impactItems: ImpactItem[]; activeItemId?: string }",
+            "approximateLoc": 200,
+            "visibilityCondition": "always"
+          },
+          {
+            "name": "GuidanceSidePanel",
+            "intent": "Slide-in panel showing one ImpactItem's guidance excerpt, agent rationale, confidence badge, assignee, accept/reject actions",
+            "propContract": "{ item: ImpactItem; excerpt: ChangedExcerpt; assignee?: User; onClose: () => void }",
+            "approximateLoc": 220,
+            "visibilityCondition": "when ?panel=<itemId>"
+          },
+          {
+            "name": "DecisionMemoDrawer",
+            "intent": "Memo drawer over the document backdrop showing draft memo, escalation flags, approval signature line",
+            "propContract": "{ item: ImpactItem; existingDecision?: DecisionRecord; onClose: () => void }",
+            "approximateLoc": 200,
+            "visibilityCondition": "when ?memo=<itemId>"
+          },
+          {
+            "name": "ConflictBanner",
+            "intent": "Top-of-page strip with open conflict count and a CTA to expand the side panel",
+            "propContract": "{ openCount: number; sectionTitle: string }",
+            "approximateLoc": 90,
+            "visibilityCondition": "when openConflictCount > 0"
+          }
+        ]
+      }
+    }
+  ]
+}

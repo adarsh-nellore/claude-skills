@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adarsh.local/build-hifi/mock-contract.schema.json",
+  "title": "Mock Data Contract",
+  "description": "Single source of truth for entity field shapes + variant counts + relationships. Produced by a Beat 1 agent from the PRD's data schema section; consumed by `scaffold-types` (emits src/lib/types.ts) and `scaffold-mock-data` (emits src/lib/mock-data/<entity>.ts skeletons with type-safe placeholder arrays). Per-entity agents in Beat 3 fill values via Edit; field shapes can't drift because the script pinned them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entities"],
+  "properties": {
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entity" }
+    },
+    "sharedEnums": {
+      "description": "Reusable enum types referenced by entity fields via { kind: 'enum', enumName: '<name>' }. Emitted at the top of src/lib/types.ts.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      }
+    }
+  },
+  "$defs": {
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fields", "variantCounts"],
+      "properties": {
+        "name": {
+          "description": "camelCase entity name. Becomes the TS interface (PascalCased), the mock-data filename, and the aggregator key.",
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9]*$"
+        },
+        "tsInterfaceName": {
+          "description": "Optional override for the TS interface name. Defaults to PascalCase(name).",
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]*$"
+        },
+        "idConvention": {
+          "description": "Pattern for the entity's id field. E.g. \"ge-001\" or \"sub-velatinib\". The script seeds N placeholder ids matching this pattern.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/field" }
+        },
+        "variantCounts": {
+          "description": "How many records the scaffolded skeleton arrays should contain per variant.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["happy"],
+          "properties": {
+            "happy": { "type": "integer", "minimum": 0, "maximum": 200 },
+            "empty": { "type": "integer", "minimum": 0, "maximum": 0, "default": 0 },
+            "error": { "type": "integer", "minimum": 0, "maximum": 5, "default": 1 },
+            "stress": { "type": "integer", "minimum": 0, "maximum": 200, "default": 0 }
+          }
+        },
+        "relationships": {
+          "description": "Foreign-key style links to other entities. Documented, not enforced by the script — the value-filling agent uses them to choose realistic ids.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "references"],
+            "properties": {
+              "field": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*$" },
+              "references": {
+                "description": "Entity name (must match one of the entities[].name in this contract).",
+                "type": "string",
+                "pattern": "^[a-z][a-zA-Z0-9]*$"
+              },
+              "cardinality": {
+                "type": "string",
+                "enum": ["one_to_one", "many_to_one", "one_to_many"],
+                "default": "many_to_one"
+              }
+            }
+          }
+        },
+        "notes": {
+          "description": "Free-form voice/domain notes the value-filling agent should follow. E.g. 'Use real eCTD module codes; no marketing voice.'",
+          "type": "string",
+          "maxLength": 600
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*$" },
+        "optional": { "type": "boolean", "default": false },
+        "kind": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "isoDate", "url", "id", "enum", "stringArray", "literalUnion"]
+        },
+        "enumName": {
+          "description": "Required when kind='enum'. Must match a key in sharedEnums OR be inlined via literalValues.",
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9]*$"
+        },
+        "literalValues": {
+          "description": "Required when kind='literalUnion'. Inline string literal union.",
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+        },
+        "referencesEntity": {
+          "description": "Optional when kind='id': declares which entity's id this is. Documentary only.",
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9]*$"
+        },
+        "example": {
+          "description": "One realistic sample value the script uses as the placeholder seed. Agents replace these with real values via Edit.",
+          "type": ["string", "number", "boolean", "null"]
+        },
+        "constraint": {
+          "description": "Free-form constraint note for the value-filling agent. E.g. '≤ 80 chars', '0–100', 'ISO 8601'.",
+          "type": "string",
+          "maxLength": 120
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "enum" } }, "required": ["kind"] },
+          "then": { "required": ["enumName"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "literalUnion" } }, "required": ["kind"] },
+          "then": { "required": ["literalValues"] }
+        }
+      ]
+    }
+  }
+}

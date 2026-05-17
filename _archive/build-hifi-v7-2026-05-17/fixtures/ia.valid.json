@@ -1,0 +1,36 @@
+{
+  "brand": "Guidance Impact",
+  "leftNav": [
+    {
+      "header": "Work",
+      "items": [
+        { "label": "Dashboard", "href": "/dashboard" },
+        { "label": "Submissions", "href": "/submissions", "badge": "4" },
+        { "label": "Guidance library", "href": "/guidance" },
+        { "label": "Decision records", "href": "/decisions" }
+      ]
+    },
+    {
+      "header": "Account",
+      "items": [
+        { "label": "Settings", "href": "/settings" }
+      ]
+    }
+  ],
+  "topNavRoles": {
+    "workspace": { "brand": true, "center": "pageTitle", "trailing": "counter" },
+    "editor": { "brand": true, "center": "breadcrumb", "trailing": "status" },
+    "modal": { "brand": true, "center": "breadcrumb", "trailing": "none" }
+  },
+  "modalPattern": {
+    "backdropMustImport": true,
+    "scrimZIndex": 50,
+    "leftNavZIndex": 60
+  },
+  "footer": {
+    "name": "Shreya Varma",
+    "role": "RA Director",
+    "initials": "SV"
+  },
+  "stubByDesign": []
+}

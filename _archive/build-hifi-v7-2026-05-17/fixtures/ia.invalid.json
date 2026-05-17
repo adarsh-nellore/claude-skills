@@ -1,0 +1,16 @@
+{
+  "leftNav": [
+    {
+      "header": "Work",
+      "items": [
+        { "label": "Dashboard", "href": "dashboard-no-slash" }
+      ]
+    }
+  ],
+  "topNavRoles": {
+    "workspace": { "brand": true, "center": "pageTitle" }
+  },
+  "footer": {
+    "name": "Shreya Varma"
+  }
+}

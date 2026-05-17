@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adarsh.local/build-hifi/style-baseline.schema.json",
+  "title": "Style baseline",
+  "description": "Produced by the Beat 1.5 style-baseline agent. Pins motion + color hierarchy + density + interaction patterns for the entire app so every screen agent in Beat 3 makes consistent micro-decisions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["motionPersonality", "entranceStagger", "hoverPattern", "focusRing", "colorHierarchy", "densityClasses"],
+  "properties": {
+    "motionPersonality": {
+      "type": "string",
+      "enum": ["calm", "punchy", "quiet", "playful"]
+    },
+    "entranceStagger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classPattern", "maxDelay"],
+      "properties": {
+        "classPattern": {
+          "description": "E.g. 'anim-fade-in-{n}'. The {n} placeholder is substituted with 0..maxDelay.",
+          "type": "string",
+          "minLength": 1
+        },
+        "maxDelay": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
+    },
+    "hoverPattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["card", "row", "annotation"],
+      "properties": {
+        "card": {
+          "description": "Class string applied to clickable cards on hover. E.g. 'hover:-translate-y-px hover:shadow-md transition-all duration-200'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "row": {
+          "type": "string",
+          "minLength": 1
+        },
+        "annotation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "focusRing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["card", "button"],
+      "properties": {
+        "card": { "type": "string", "minLength": 1 },
+        "button": { "type": "string", "minLength": 1 }
+      }
+    },
+    "colorHierarchy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primaryAction", "warning", "success", "danger", "muted"],
+      "properties": {
+        "primaryAction": { "type": "string", "minLength": 1 },
+        "warning": { "type": "string", "minLength": 1 },
+        "success": { "type": "string", "minLength": 1 },
+        "danger": { "type": "string", "minLength": 1 },
+        "muted": { "type": "string", "minLength": 1 }
+      }
+    },
+    "densityClasses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cardPadding", "sectionGap", "kpiGridColumns"],
+      "properties": {
+        "cardPadding": {
+          "description": "DS Card primitive padding prop value, e.g. 'md' or 'lg'.",
+          "type": "string",
+          "enum": ["none", "sm", "md", "lg"]
+        },
+        "sectionGap": {
+          "description": "Stack gap value between top-level sections.",
+          "type": "string",
+          "enum": ["tight", "cozy", "comfortable", "block", "section", "page", "hero"]
+        },
+        "kpiGridColumns": {
+          "description": "How many KPI tiles per row at 1280px.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6
+        }
+      }
+    },
+    "loadingPattern": {
+      "description": "Optional. How loading/skeleton states render.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "useSkeletonPrimitive": { "type": "boolean", "default": true },
+        "shimmer": { "type": "boolean", "default": false }
+      }
+    },
+    "emptyStatePattern": {
+      "description": "Optional. How empty states render.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "useEmptyStatePrimitive": { "type": "boolean", "default": true },
+        "includeIllustration": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "motionPersonality": "calm",
+  "entranceStagger": {
+    "classPattern": "anim-fade-in-{n}",
+    "maxDelay": 5
+  },
+  "hoverPattern": {
+    "card": "transition-all duration-200 ease-out hover:-translate-y-px hover:shadow-md",
+    "row": "transition-colors duration-150 hover:bg-stripe",
+    "annotation": "transition-colors duration-150 hover:bg-amber-50"
+  },
+  "focusRing": {
+    "card": "focus-visible:ring-2 focus-visible:ring-coral focus-visible:ring-offset-2 focus-visible:outline-none rounded-lg",
+    "button": "focus-visible:ring-2 focus-visible:ring-coral focus-visible:outline-none"
+  },
+  "colorHierarchy": {
+    "primaryAction": "coral",
+    "warning": "gold",
+    "success": "green",
+    "danger": "coral-strong",
+    "muted": "ink-soft"
+  },
+  "densityClasses": {
+    "cardPadding": "md",
+    "sectionGap": "section",
+    "kpiGridColumns": 4
+  }
+}

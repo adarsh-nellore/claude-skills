@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adarsh.local/build-hifi/ia.schema.json",
+  "title": "IA Model",
+  "description": "The single source of truth for app-wide navigation: LeftNav groups, TopNav role config per layout, footer identity, modal coupling rules. Produced by a Beat 1 agent from the PRD's persona + user stories; consumed by `scaffold-chrome` to emit src/components/app/{AppLeftNav,AppTopNav,AppScreen}.tsx.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["leftNav", "topNavRoles", "footer"],
+  "properties": {
+    "brand": {
+      "description": "Product/app name shown in the LeftNav and TopNav. Derived from the PRD product name. Required for branded prototypes; if omitted, scaffold-chrome defaults to 'App'.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "leftNav": {
+      "description": "LeftNav groups rendered on every route. Items appear in array order.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["header", "items"],
+        "properties": {
+          "header": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "href"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1, "maxLength": 32 },
+                "href": { "type": "string", "pattern": "^/" },
+                "badge": { "type": "string", "maxLength": 12 },
+                "statusBadge": {
+                  "type": "string",
+                  "enum": ["info", "success", "warning", "danger", "neutral"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "topNavRoles": {
+      "description": "TopNav composition per layout role. Keys are the role names referenced by AppScreen's `role` prop.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["brand", "center"],
+        "properties": {
+          "brand": { "type": "boolean", "description": "Show PeerBrand on the left" },
+          "center": {
+            "type": "string",
+            "enum": ["pageTitle", "breadcrumb", "none"],
+            "description": "Which slot AppTopNav fills in the center: page title, breadcrumb crumbs, or empty"
+          },
+          "trailing": {
+            "type": "string",
+            "enum": ["counter", "status", "actions", "none"],
+            "default": "none"
+          }
+        }
+      }
+    },
+    "modalPattern": {
+      "description": "Rules for modal routes that overlay an underlying screen.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backdropMustImport": {
+          "type": "boolean",
+          "description": "If true, modal routes import the underlying screen as their backdrop via a shared component (no independent backdrop authoring)."
+        },
+        "scrimZIndex": { "type": "integer", "minimum": 1, "maximum": 999 },
+        "leftNavZIndex": { "type": "integer", "minimum": 1, "maximum": 999 }
+      }
+    },
+    "footer": {
+      "description": "User identity rendered in the LeftNav footer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "initials": { "type": "string", "minLength": 1, "maxLength": 3 }
+      }
+    },
+    "stubByDesign": {
+      "description": "Routes the IA explicitly allows to render only a stub EmptyState. Default is empty: every routable surface must have authored content.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["route", "justification"],
+        "properties": {
+          "route": { "type": "string", "pattern": "^/" },
+          "justification": { "type": "string", "minLength": 8 }
+        }
+      }
+    }
+  }
+}

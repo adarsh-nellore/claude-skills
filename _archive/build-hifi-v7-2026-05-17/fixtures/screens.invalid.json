@@ -1,0 +1,10 @@
+{
+  "screens": [
+    {
+      "path": "/editor",
+      "intent": "Compound screen missing its compound block",
+      "layout": "editor",
+      "complexity": "compound"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "cornerstoneScreen": "/submissions/[submissionId]/sections/[sectionId]",
+  "cornerstoneJustification": "Shreya Varma spends 70% of her active time inside the section-level document editor reviewing inline conflicts, drafting decision memos, and approving filings. Every other surface should either tee up entry into this screen or extend a decision made here.",
+  "iaPhilosophy": "hub_spoke",
+  "primaryPersona": {
+    "name": "Shreya Varma",
+    "role": "RA Director, Global Submissions",
+    "jtbd": "Triage incoming regulatory guidance events, decide their impact on in-flight submissions, and approve filing decisions before deadlines slip."
+  },
+  "motionPersonality": "calm",
+  "contentVoice": "regulatory",
+  "densityTarget": "high",
+  "visualReferences": [],
+  "keyInteractions": [
+    "URL-param-driven side panel showing one ImpactItem's full context",
+    "Modal decision memo drawer with locked / provisional state",
+    "Amber-underline annotation hover + active state in document body",
+    "Hub-and-spoke nav from dashboard to cornerstone in 1-2 clicks"
+  ],
+  "navigationPolicy": {
+    "maxClicksToCornerstone": 2,
+    "homeRoute": "/dashboard"
+  }
+}

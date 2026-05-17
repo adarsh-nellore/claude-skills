@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "auditLog": {
+      "fields": {
+        "summary": {
+          "mustBeFullSentence": true,
+          "mustNameActor": true,
+          "mustReferenceFK": true,
+          "mustIncludeDeadline": false,
+          "voiceTone": "regulatory",
+          "forbiddenPhrases": ["user_assigned", "agent_proposed", "system_locked", "TODO"],
+          "exampleGood": "Shreya Varma assigned the PFS co-primary endpoint conflict to David Park, Module 5.3.5.1, due 2026-05-19.",
+          "exampleBad": "user_assigned_owner — assigned a conflict",
+          "hint": "Full sentence: name the actor (first + last), resolve FK to readable label, include deadline if relevant."
+        }
+      }
+    },
+    "decisionRecords": {
+      "fields": {
+        "rationale": {
+          "mustBeFullSentence": true,
+          "mustCiteStandard": true,
+          "voiceTone": "regulatory",
+          "forbiddenPhrases": ["TODO", "lorem"],
+          "hint": "1-2 sentences citing the regulatory standard (e.g. ICH E9 §3.4) and naming the assessor."
+        }
+      }
+    },
+    "changedExcerpts": {
+      "fields": {
+        "excerptText": {
+          "mustBeFullSentence": true,
+          "voiceTone": "regulatory",
+          "forbiddenPhrases": ["TODO"],
+          "hint": "1-2 sentence quote in real FDA/EMA voice (e.g. 'Sponsors should…')."
+        },
+        "agentSummary": {
+          "mustBeFullSentence": true,
+          "voiceTone": "regulatory",
+          "hint": "1 sentence describing what changed and why it matters."
+        }
+      }
+    },
+    "impactItems": {
+      "fields": {
+        "agentRationale": {
+          "mustBeFullSentence": true,
+          "mustReferenceFK": true,
+          "voiceTone": "regulatory",
+          "hint": "1-2 sentences naming the specific section affected and reasoning about deadline pressure."
+        }
+      }
+    }
+  }
+}

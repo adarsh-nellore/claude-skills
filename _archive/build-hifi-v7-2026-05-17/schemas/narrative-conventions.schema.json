@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adarsh.local/build-hifi/narrative-conventions.schema.json",
+  "title": "Narrative conventions",
+  "description": "Per-entity voice rules. The MockContract Beat 1 agent emits this alongside mock-contract.json; the script copies the relevant rules into each entity's `notes` field so the Beat 3 value-fill agents see them inline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entities"],
+  "properties": {
+    "entities": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Keyed by entity name (matches mock-contract.entities[].name).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "type": "object",
+            "description": "Keyed by field name. Each entry is the convention rule for that field.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mustBeFullSentence": { "type": "boolean", "default": false },
+                "mustNameActor": { "type": "boolean", "default": false },
+                "mustReferenceFK": { "type": "boolean", "default": false },
+                "mustIncludeDeadline": { "type": "boolean", "default": false },
+                "mustCiteStandard": { "type": "boolean", "default": false },
+                "voiceTone": {
+                  "type": "string",
+                  "enum": ["regulatory", "consumer", "analytical", "narrative", "operator"]
+                },
+                "forbiddenPhrases": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                },
+                "exampleGood": { "type": "string", "minLength": 1 },
+                "exampleBad": { "type": "string", "minLength": 1 },
+                "hint": {
+                  "description": "One-line hint embedded into the scaffolded TODO placeholder.",
+                  "type": "string",
+                  "minLength": 10,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "build-hifi-skill",
+  "version": "4.0.0",
+  "description": "Local deps for the build-hifi skill (Playwright smoke harness)",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

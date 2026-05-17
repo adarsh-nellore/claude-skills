@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adarsh.local/build-hifi/screens.schema.json",
+  "title": "Screen List",
+  "description": "Ordered list of routes to scaffold. Each route declares its layout role, complexity, primary regions, agent involvement, and required mock entities. Compound screens additionally declare their sub-component children. Produced by a Beat 1 agent from the PRD's core screens + lo-fi concepts.json; consumed by `scaffold-routes`, `scaffold-compound`, and `bundle-context`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["screens"],
+  "properties": {
+    "screens": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/screen" }
+    }
+  },
+  "$defs": {
+    "screen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "intent"],
+      "properties": {
+        "path": {
+          "description": "Next.js route path. Dynamic segments use [param] syntax.",
+          "type": "string",
+          "pattern": "^/"
+        },
+        "intent": {
+          "description": "One-line description of what this screen does for the primary persona.",
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        },
+        "layout": {
+          "description": "Layout role. Determines TopNav composition and PageContainer size.",
+          "type": "string",
+          "enum": ["workspace", "editor", "modal", "split", "form"],
+          "default": "workspace"
+        },
+        "pageTitle": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "breadcrumb": {
+          "description": "Crumb labels for editor routes (used when topNavRoles[layout].center === 'breadcrumb').",
+          "type": "array",
+          "items": { "type": "string", "maxLength": 40 }
+        },
+        "complexity": {
+          "description": "`simple` = one body agent. `compound` = pre-authored composition shell + N parallel sub-component agents.",
+          "type": "string",
+          "enum": ["simple", "compound", "trivial"],
+          "default": "simple"
+        },
+        "trivial": {
+          "description": "Set true for redirects and < 20-line index pages. Main thread writes these directly instead of spawning an agent.",
+          "type": "boolean",
+          "default": false
+        },
+        "redirectTo": {
+          "description": "Required when trivial=true AND the route is a redirect.",
+          "type": "string",
+          "pattern": "^/"
+        },
+        "primaryRegions": {
+          "description": "Region kinds present on this screen. Used by `smoke.mjs` for per-route Playwright assertions and by `bundle-context` to bias the agent prompt.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "kpi_grid",
+              "table",
+              "card_grid",
+              "side_panel",
+              "document_viewer",
+              "form",
+              "chart_block",
+              "agent_block",
+              "banner",
+              "nav_tree",
+              "activity_feed",
+              "memo_drawer",
+              "filter_bar",
+              "page_header"
+            ]
+          }
+        },
+        "agentInvolvement": {
+          "description": "How AI/agent features appear on this screen.",
+          "type": "string",
+          "enum": ["none", "passive_summary", "ranked_list", "rationale_overlay", "co_pilot", "background_monitor"],
+          "default": "none"
+        },
+        "requiredMockEntities": {
+          "description": "Names of mock-contract entities this screen depends on. Validated against mock-contract.json.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*$" }
+        },
+        "edgeCaseStates": {
+          "description": "PRD-derived edge-case states this screen exposes via ?state=<name>.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["empty", "error", "stress", "loading", "permission_denied", "rate_limited"]
+          }
+        },
+        "urlParams": {
+          "description": "Named URL params this screen reads to drive overlay/sub-component visibility.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "purpose"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]*$" },
+              "purpose": { "type": "string", "maxLength": 120 }
+            }
+          }
+        },
+        "compound": {
+          "description": "Required when complexity='compound'. Declares the sub-component children that scaffold-compound emits and that parallel sub-component agents fill.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["children"],
+          "properties": {
+            "children": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 8,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "intent"],
+                "properties": {
+                  "name": {
+                    "description": "PascalCase component name. Becomes the import + file _kebab-case.tsx.",
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Za-z0-9]*$"
+                  },
+                  "intent": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 200
+                  },
+                  "propContract": {
+                    "description": "Free-form description of the props the shell will pass. Agent uses this to type the component's props.",
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "approximateLoc": {
+                    "description": "Rough LOC budget for this sub-component. Used by the SLOWDOWN-DIAGNOSIS heuristic.",
+                    "type": "integer",
+                    "minimum": 40,
+                    "maximum": 400
+                  },
+                  "visibilityCondition": {
+                    "description": "When this sub-component renders. E.g. \"always\", \"when ?panel=<id>\", \"when openConflictCount > 0\".",
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "complexity": { "const": "compound" } }, "required": ["complexity"] },
+          "then": { "required": ["compound"] }
+        },
+        {
+          "if": { "properties": { "trivial": { "const": true } }, "required": ["trivial"] },
+          "then": {
+            "properties": {
+              "complexity": { "const": "trivial" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
