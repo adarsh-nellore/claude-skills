@@ -197,10 +197,21 @@ per modal. Reference pattern: `~/Documents/claimvault/` uses
 surface. Separate routes per modal produce sparse pages that lose
 the working-context the user is supposed to keep.
 
-### Beat 3: Generate mock data + screens in parallel
+### Beat 3: Generate mock data, then screens
 
-Spawn **(1 + N)** `general-purpose` Agent calls in **one tool-call
-batch**, where N is the number of screens.
+Beat 3 is two sequential phases. The split exists because per-screen
+agents must import entity data from `src/lib/mock-data.ts`, and the
+mock-data agent owns writing that file. Running them in parallel
+(the pre-2026-05-17 spec) caused all per-screen agents to read the
+empty stub file and silently fall back to inline data, breaking the
+"import from `@/lib/mock-data`" hard rule and producing ~3000 LOC of
+duplicated mock data across the screens. The split adds ~5-7 min
+wall-clock and eliminates that duplication entirely.
+
+#### Beat 3a: Mock data + types (single agent, blocking)
+
+Spawn ONE `general-purpose` Agent call. Wait for it to return before
+proceeding. Wall-clock: ~7 min.
 
 **Agent 0 (mock data):** Reads the PRD, writes
 `src/lib/mock-data.ts` with domain-modeled records. Hard rules:
@@ -224,6 +235,13 @@ batch**, where N is the number of screens.
 Returns: the path to the written file plus a count of records per
 entity (including edge-case variants).
 
+#### Beat 3b: Per-screen agents (N agents, parallel batch)
+
+After Beat 3a returns, spawn **N** `general-purpose` Agent calls in
+**one tool-call batch**, where N is the number of screens decided in
+Beat 2. All N run concurrently. Wall-clock: roughly one agent's
+worth of work (~6-8 min depending on cornerstone density).
+
 **Agents 1 through N (one per screen):** Each writes one
 `src/app/<route>/page.tsx`. Each agent's prompt contains:
 
@@ -243,11 +261,15 @@ entity (including edge-case variants).
   from `rcm-observability/src/app/overview/page.tsx` (pasted as a
   pattern source).
 - Output path: `src/app/<route>/page.tsx`.
+- **Mock data source.** Import all entity data from `@/lib/mock-data`
+  (which Agent 0 will have populated before this agent runs, see
+  Beat 3 sequencing). Do NOT inline mock data in the page file. If
+  the entities you need are missing from `@/lib/mock-data` at read
+  time, STOP and report. Do not silently fall back to inline data.
+  The `mockData.happy / empty / error / stress` variants are the
+  contract for `?state=` rendering.
 - Instruction: write the file directly, return only the path + a
   one-line summary of which components were used.
-
-All N+1 agents run concurrently. Wall-clock time for this beat is
-roughly one agent's worth of work.
 
 **Straggler handling.** If any single agent in the batch has not
 returned after 6 minutes of wall-clock AND all other agents have
@@ -261,6 +283,14 @@ mistake. The watchdog is a stop condition, not a fallback.
 ### Beat 4: Wire routing and nav
 
 After the batch returns, on the main thread:
+
+**Beat 4 is often a no-op.** If the DS's `LeftNav` primitive takes a
+per-page `sections` prop (the peer-design-system pattern), per-screen
+agents already configured their own nav inline and the main thread
+has nothing to wire. In that case, skip the bullets below and proceed
+to Beat 5. The bullets below apply only when the DS centralizes nav
+in a single editable file (e.g., a `<NavSidebar>` component with
+hardcoded routes that all screens import).
 
 - Edit `src/components/layout/LeftNav.tsx` (or equivalent) to add
   the new routes, grouped by the IA from the sketch or PRD.
@@ -347,6 +377,20 @@ Then stop. Do not open a browser. Do not run lighthouse, do not run
   primitive does not exist, the agent creates it in
   `src/components/ui/` following the same shape as a sibling
   (typed, OKLCH-friendly via tokens, default + variant API).
+- **Next 16 Suspense rule for `useSearchParams()`.** If a per-screen
+  page reads URL state via `useSearchParams()`, the default export
+  must wrap its body in `<Suspense fallback={null}>`. Pattern:
+  extract the body into a `*Inner` component; default export returns
+  `<Suspense fallback={null}><Inner /></Suspense>`. Required by Next
+  16 prerender. Pages that call `useSearchParams()` without a
+  Suspense boundary fail the build with a CSR-bailout error. Applies
+  to every `?modal=`, `?taskId=`, `?state=` consumer.
+- **No `export const dynamic` in client pages.** `dynamic =
+  "force-dynamic"` is a server-component-only export. Putting it in a
+  `"use client"` file does NOT bypass the Suspense requirement and
+  WILL break Next 16's RSC bundler in dev mode (`Could not find the
+  module ... in the React Client Manifest`). Use Suspense, not
+  `dynamic`, for client-page CSR bailout.
 - **Domain vocabulary from the PRD, never lorem ipsum or generic
   placeholder text.**
 
@@ -419,9 +463,22 @@ parallel subagent in the same batch first.
 Apply to UI copy, mock data prose (issue titles, summaries, comments),
 README updates, and any subagent-written documentation.
 
-- No em dashes. Use periods, semicolons, colons, parens.
+- No em dashes in agent-authored prose. Use periods, semicolons,
+  colons, parens. Exception: strings copied verbatim from the PRD
+  (section titles like "Section 5.3.5.1 — Safety Summary",
+  scope_confirmation_text quotes, mock-data examples) preserve their
+  PRD punctuation. Em dashes generated by the agent in headers,
+  captions, banner copy, button labels, error messages, or
+  reasoning-entry narration must be replaced.
 - No "you" in product copy unless the brief explicitly calls for
-  second-person voice.
+  second-person voice. Common slip points to watch:
+  - Modal descriptions ("until you confirm" → "until Priya confirms"
+    or "until the reviewer confirms")
+  - EmptyState body text ("if you have it" → restructure passively)
+  - Error message bodies and Banner copy
+  - Tooltip and help text
+  Rewrite each occurrence either by naming the primary persona
+  explicitly or by restructuring to passive/third-person.
 - No AI slop: no decorative arrows, no fake quotes, no punchy 4-7
   word section titles, no aphoristic openers, no "X, not Y"
   parallels, no "this isn't just X" intensifiers.
