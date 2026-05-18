@@ -407,140 +407,422 @@ When you're ready for analysis + scaffolding (Stage 2-3), run:
 
 ---
 
-# STAGE 2 — Analysis + user dialog (~3-4 min)
+# STAGE 2 — Analysis + user dialog (~7-9 min for a comprehensive PRD; ~4-5 min for a thin one)
 
-## Beat 2.1 — Verify checkpoint + load PRD (~10s)
+Wall-clock observed on the Peer AI Source Conflict Resolution exercise
+(20-section PRD + 7-flow walkthrough + 5 Tier 1 + 4 Tier 2 + 6 drift):
+- Beat 2.2 parallel agents: ~3.5 min
+- Beat 2.3 synthesis: ~3 min
+- Beat 2.5 scope contract: ~3 min
+- Dialog: variable (user time, excluded)
+
+For thinner PRDs the synthesis + scope steps drop proportionally.
+The 4-min hard caps apply per-agent in Beat 2.2 only; main-thread
+work in Beats 2.3 and 2.5 scales with content density.
+
+Stage 2 surfaces BOTH lenses on the seed: spec gaps (PRD/lofi vs MP code)
+AND experienced friction (walking through the running dev server as the
+persona). Two parallel agents handle the lenses; the main thread
+synthesizes, dialogs, and writes the scope contract that Stage 3 will
+implement from.
+
+## Beat 2.1 — Verify checkpoint + load context (~10s, main thread)
 
 Verify `<out>/.dress-up/stage1-done.json` exists. If not, error.
 
-Read PRD from `--prd <path>` (or from stage1 checkpoint if previously
-passed). If no PRD, proceed with shallow analysis (MP + --brief only)
-and note in output: "PRD not provided; analysis limited to brief +
-obvious IA holes."
+Load PRD path and `--brief` path from `<out>/.dress-up/bootstrap-done.json`
+(written at Stage 0). If no PRD, proceed with degraded Agent A that
+only has the brief; flag this in the report.
 
-## Beat 2.2 — Analysis pass with forced PRD citations (~2-3 min, ONE main-thread LLM)
+Read `dev_server.url` from `stage1-done.json`. Confirm the cornerstone
+route returns HTTP 200:
 
-Single analytic pass. Forces section-by-section PRD citations so the
-agent actually parses the PRD instead of skimming.
+```bash
+curl -s -o /dev/null -w "%{http_code}" "${DEV_URL}${CORNERSTONE_ROUTE}"
+```
 
-Write `<out>/.dress-up/phase1-analysis.md` with required structure:
+If non-200, restart the dev server (use the PID + command from
+`stage1-done.json`) before spawning Agent B. Update the checkpoint with
+the new PID. Agent B fails fast if the server is unreachable; don't let
+it spend Playwright budget discovering that.
 
-```markdown
-# Phase 1 Analysis — <slug>
+## Beat 2.2 — Spawn Agents A + B in ONE parallel batch (~3-4 min wall-clock)
 
-## Brief-fidelity scan (HIGHEST PRIORITY)
-The OG brief (PRD §intro + persona + JTBD, or --brief notes file)
-lists these core asks: <enumerate verbatim with section citations>.
-For each core ask: yes / partial / no — does MP address it?
-List "no" items first; these are Tier 1 by default.
+Both agents run as general-purpose Agent tool calls in a SINGLE
+tool-call message. Wall-clock equals the slower agent.
 
-## Persona alignment
-- PRD §<N>: <verbatim persona name + key context>
-- MP currently addresses: <observation>
-- Gap: <specific>
+### Agent A — Spec audit
+
+```
+You are auditing a ported Magic Patterns prototype against its PRD
+and (if present) a brief notes file + lofi sketch JSON. Output is a
+section-by-section spec audit. NO usability commentary (that's a
+sibling agent's job; you'd be guessing because you don't have a
+browser).
+
+## Inputs to read
+
+- PRD: {PRD_PATH}
+- Brief notes (if present): {BRIEF_PATH}
+- Lofi concepts.json (if present): {LOFI_CONCEPTS_PATH}
+- MP-derived source under {OUT_ROOT}/src/:
+  - src/app/**/*.tsx (routes)
+  - src/components/peer/*.tsx (ported components)
+  - src/lib/{store.tsx, mock-data.ts, types.ts}
+
+## Output
+
+Write {OUT_ROOT}/.dress-up/spec-audit.md with EXACTLY this structure:
+
+# Spec Audit — {SLUG}
+
+## Brief-fidelity scan
+Enumerate PRD §intro + persona + JTBD core asks verbatim with section
+citations. For each, mark yes/partial/no — does the ported MP address
+it? List "no" items first; these are Tier 1 candidates.
 
 ## Surface inventory
-- PRD §<N> (Core Screens): lists <A, B, C, D, E>
-- MP shipped: <subset>
-- Missing routes: <list with PRD section + persona use case>
+PRD §10 (UI Surface Inventory) vs what {OUT_ROOT}/src/app/ ships.
+List missing routes with PRD § + persona use case. List extra routes
+not in PRD.
 
-## PRD-MP drift (places they DISAGREE, not just omit)
-For each MP behavior or content that CONTRADICTS the PRD:
-- PRD §<N> says: <verbatim claim>
-- MP shows: <observed contradicting behavior>
-- Possible reasons: (a) user iterated MP since PRD — intentional,
-  (b) MP wasn't built to that spec — oversight.
-- Options:
-  (1) keep MP's version, treat PRD as stale
-  (2) Stage 3 conforms MP to PRD
-  (3) skip, log as assumption
+## Component inventory gaps
+PRD §14 (Component Inventory) diffed against src/components/peer/.
+Per missing component: PRD § + what it does + where it goes.
+
+## Agent state coverage
+For each route, cross-reference PRD §17 (Agent Capability Specs) and
+the 13 patterns from ~/.claude/skills/agent-states/SKILL.md:
+- Currently expresses: <list with where in source>
+- PRD requires also expressing: <list with citations>
+- Recommended pattern: <e.g., "low_confidence → underline + side panel
+  with confidence chip and source link">
+
+## Edge case coverage
+PRD §21 categories × routes. Table:
+| Route | empty | error | stress | permission | data | temporal |
+Mark present | missing | N/A per cell. Bias: missing edge cases are
+Tier 2 unless they break the brief's success criteria.
+
+## PRD-MP drift
+Places PRD and MP code DISAGREE (not just where MP omits). Per drift:
+- PRD §N says: <verbatim>
+- MP shows: <observation with file:line>
+- Possible reasons: (a) user iterated MP since PRD, (b) MP wasn't
+  built to spec
+- Options: (1) keep MP, (2) conform to PRD, (3) log as assumption
 
 If no contradictions: "No PRD-MP drift detected."
 
-## Agent states
-For each MP route, cross-reference PRD §<N> (Agent Capability Specs)
-and the 13 patterns from ~/.claude/skills/agent-states/SKILL.md:
-- Currently expresses: <list with where in MP UI>
-- PRD requires also expressing: <list with citations>
-- Recommended pattern per state: <e.g. "low_confidence → underline
-  + side panel">
-
-## Edge cases
-PRD §21 rows: empty / error / stress / permission / data / temporal.
-For each row × each MP route: present | missing | N/A.
-**Bias: edge cases are Tier 2 by default unless they break the brief.**
-
-## Component inventory gaps
-PRD §<N> lists per-route components. Diff against MP. List missing.
-
 ## Mock-data depth
-PRD names specific entities, dates, quotes. Check MP usage.
-**Bias: existing mock-data is "good enough" unless wrong, not just
-thin. Don't rewrite for polish.**
+PRD §15 (Data Schema) + §18 (Mock Data Examples) name specific
+entities, states, dates. Check src/lib/mock-data.ts.
+Bias: existing mock-data is "good enough" unless wrong or missing a
+state the PRD names. Don't rewrite for polish.
 
-## Recommendation tiers
-- **Tier 1 (must-do — answers the OG brief)**: <list with brief
-  citation + cost estimate>. These are implemented by default.
-- **Tier 2 (nice-to-have)**: <list>. User opts IN per item.
-- **Tier 3 (skip this pass)**: <list>.
+## Hard rules
+
+- EVERY finding cites a PRD section number. No PRD § cite, no finding.
+- If a PRD § referenced doesn't actually exist in the document, write
+  "PRD missing: §X expected" — never fabricate.
+- No tiering yet. No recommendations yet. Report what is, with cites.
+  Main thread tiers in Beat 2.3.
+- 600 LOC hard cap on spec-audit.md. 4 minutes hard cap on wall-clock.
+  If over budget, stop and return what's complete plus a one-line
+  note about what was skipped.
 ```
 
-If PRD missing a referenced section, record "PRD missing: <expected
-section>" rather than fabricating.
+### Agent B — Persona walkthrough
 
-## Beat 2.3 — User dialog (~1 min, AskUserQuestion)
+```
+You are walking a working prototype as the primary persona from the
+PRD. Output is a friction log: every observed missing affordance,
+confusing label, unclear state, slow path, or dead-end UI. Use
+Playwright MCP. Take screenshots at every meaningful state.
+
+## Inputs to read
+
+- Persona block (only): PRD §7 (or the section labeled "Personas"),
+  primary persona ONLY. Don't scroll past it.
+- Dev server URL: {DEV_URL} (from {OUT_ROOT}/.dress-up/stage1-done.json)
+- Lofi concepts.json (if present, for flow list): {LOFI_CONCEPTS_PATH}
+
+## Flows to walk (in order)
+
+For Peer AI cornerstone (section editor): use this default set. For
+other PRDs, derive 4-6 flows from the cornerstone's "primary surface"
+description + the lofi concepts list.
+
+1. Open the section editor (cornerstone)
+2. Click an amber CitationChip → verify drawer opens
+3. Resolve a HIGH-confidence conflict (recommended source pre-picked)
+4. Resolve a LOW-confidence conflict (cr-2 PFS, no recommendation)
+5. Dismiss a conflict with a reason
+6. Apply-to-all → propagation report with blocked section
+7. Try to access /submissions/{ID}/audit as the writer role
+
+## Per flow
+
+1. Navigate to the route.
+2. Take screenshot named flow-{N}-{step}.png under {OUT_ROOT}/.dress-up/screens/
+3. Click through; screenshot after each meaningful state change.
+4. Log every friction with type + one-line description + screenshot path.
+
+Friction types (use exactly these):
+- missing affordance — user has no way to do something the persona needs
+- confusing label — text doesn't communicate the action or state
+- unclear state — UI doesn't tell user what just happened or what's possible
+- slow path — too many clicks for a frequent action
+- no error feedback — failure state has no indication
+- dead-end UI — flow ends without resolution or next step
+
+## Output
+
+Write {OUT_ROOT}/.dress-up/walkthrough-friction.md with EXACTLY this
+structure:
+
+# Walkthrough Friction — {SLUG}
+
+## Persona
+{One-paragraph paraphrase of the primary persona; cite PRD §7.}
+
+## Flow 1 — {name}
+Route walked: {route}
+Steps: {N steps}
+Friction:
+- [missing affordance] One-line description (screens/flow-1-3.png)
+- [unclear state] ...
+
+## Flow 2 — {name}
+...
+
+## Cross-flow patterns
+Friction observed in 2+ flows. Likely systemic. E.g.:
+- "Confirm" buttons inconsistently labeled across drawer / modal
+- No success toast after any resolve action
+
+## Hard rules
+
+- NO PRD references. Don't grep the PRD for what's "supposed" to be
+  there. Report only what you see in the running prototype.
+- NO recommendations. Don't say "should add X". Just report friction.
+- NO design opinions ("looks dated", "needs polish"). Stick to
+  functional friction.
+- Every friction has a screenshot path. No screenshot, no item.
+- 400 LOC hard cap on walkthrough-friction.md. 4 minutes hard cap on
+  wall-clock (Playwright spin-up included).
+- If you can't reach the dev server, STOP immediately. Don't synthesize
+  fake friction from the code; that defeats the purpose. Surface the
+  error in walkthrough-friction.md and exit.
+- Close the browser cleanly at the end (mcp__playwright__playwright_close).
+```
+
+## Beat 2.3 — Main-thread synthesis (~1-3 min, no agent — scales with finding count)
+
+Read both agent outputs:
+- {OUT_ROOT}/.dress-up/spec-audit.md
+- {OUT_ROOT}/.dress-up/walkthrough-friction.md
+
+If either file is missing or marked errored, STOP and surface to user.
+Do not synthesize from one alone — that defeats the dual-lens design.
+
+Write {OUT_ROOT}/.dress-up/phase1-analysis.md:
+
+```markdown
+# Phase 1 Analysis — {SLUG}
+
+## Sources
+- Agent A spec audit: spec-audit.md ({LOC} LOC, ran in {DURATION})
+- Agent B persona walkthrough: walkthrough-friction.md ({LOC} LOC,
+  {N} screenshots, ran in {DURATION})
+
+## Merged findings
+
+| ID | Source | Finding | PRD § | Tier |
+|----|--------|---------|-------|------|
+| F-1 | both | <description that fuses A's spec finding with B's friction observation> | §17 | 1 |
+| F-2 | A | <spec-only finding> | §10 | 2 |
+| F-3 | B | <friction-only finding> | — | 2 |
+| D-1 | A | <drift item> | §12 | (drift) |
+...
+
+## Tiering rules used
+
+- **Tier 1** = brief-breaking (item blocks the PRD's persona success
+  criteria) OR critical friction (dead-end UI, broken role gate,
+  no path forward).
+- **Tier 2** = clear improvement (PRD section addressed shallowly,
+  usability friction observed but not blocking).
+- **Tier 3** = polish, not in PRD, not blocking. Default skip.
+
+## Recommendation summary
+
+Tier 1 (default-do):
+- F-1: <one-line>
+- F-4: <one-line>
+...
+
+Tier 2 (opt-in):
+- F-2: <one-line>
+- F-5: <one-line>
+...
+
+Tier 3 (skip):
+- F-7: <one-line>
+```
+
+### Dedup rules
+
+Two findings collapse to one row when:
+- A's spec gap and B's friction describe the same hole (e.g., A:
+  "PRD §17 calls for AskStatsAction" + B: "low-conf drawer
+  dead-ends" → ONE row, Source=both)
+- A's missing-component and B's missing-affordance map to the same
+  user-facing element
+- Two B friction items in different flows root-cause to the same
+  missing piece
+
+Don't collapse:
+- A spec gap + B observation that are about different things (even
+  if same route)
+- Two related-but-distinct frictions ("apply-to-all toggle unlabeled"
+  vs. "no preview of which sections are affected")
+
+## Beat 2.4 — User dialog (~1 min, AskUserQuestion)
 
 Cap 4 questions. Order by Tier:
 
 1. **Tier 1 confirmation** (only if Tier 1 has >2 items):
-   multiSelect — "Brief asks for X, Y, Z that MP doesn't address.
-   I'll implement all by default. Uncheck to skip."
-2. **PRD-MP drift** (only if drift section non-empty):
-   single-select — "MP diverges from PRD in N places. Default = keep
+   multiSelect — "These items block the brief. Default-do; uncheck
+   to skip."
+2. **Drift reconciliation** (only if D-N items present):
+   single-select — "PRD and MP disagree in N places. Default = keep
    MP's version. Options: keep MP / conform to PRD / case-by-case."
 3. **Tier 2 opt-in** (only if Tier 2 non-empty):
-   multiSelect — "Optional adds (won't fail the brief if skipped).
-   Default = none."
+   multiSelect — "Optional improvements. Default = none."
 4. **New routes** (only if missing routes list non-empty):
-   multiSelect — "Missing routes from PRD. Default = none."
+   multiSelect — "Routes the PRD declares but MP doesn't ship.
+   Default = none."
 
-Skip a bucket if analysis shows no real decision in it. Always include
-"Skip / use default" per question.
+Skip a bucket if analysis shows no real decision in it. Always
+include "Skip / use default" per question.
 
 **Default-with-flag on skip:** every defaulted question gets the
-default applied AND logged to the Assumptions section of the final
-report.
+default applied AND logged to the Assumptions section of
+phase1-scope.md.
 
-**Default behavior if user skips everything: implement Tier 1, skip
-Tier 2/3, keep MP's drift versions.** Fast path that still answers
-the brief.
+**Default behavior if user skips everything:** implement Tier 1, skip
+Tier 2/3, keep MP's drift versions. Fast path that still answers the
+brief.
 
-Save chosen scope to `<out>/.dress-up/phase1-scope.md`:
+## Beat 2.5 — Write phase1-scope.md (Stage 3 input contract)
+
+This is the load-bearing artifact. Stage 3 reads ONLY this file and
+implements from it without re-deciding what to build.
+
+Required structure (Stage 3 agents grep these section headers exactly;
+do not rename):
 
 ```markdown
-# Phase 1 Scope
+# Phase 1 Scope — {SLUG}
 
 ## Routes to modify
-- <route>: add widget X (PRD §N), wire agent state Y, add ?state=empty
+
+### {route path}
+- target file: {absolute path}
+- changes:
+  - [F-12] {verbatim finding from phase1-analysis.md, with PRD § citation}
+    - what to add: {specific component name or behavior}
+    - mock-data needed: {entity IDs / fields, or "none"}
+    - where it goes: {region of the page — e.g., "inside drawer,
+      below classification strip"}
+  - [F-15] ...
 
 ## Routes to add (new)
-- /<path>: per PRD §M; uses mock-data entities A, B, C
 
-## Agent states per route
-- /<route>: low_confidence, awaiting_review
+### {new route path}
+- target file: {absolute path}
+- purpose: {one line, PRD §}
+- mock-data needed: ...
+- where it sits in the IA: ...
 
-## Edge-case states per route
-- /<route>: ?state=empty, ?state=stress
+## New components to create
 
-## Drift items to reconcile (if any)
-- PRD §N → conform MP to PRD: <specific change>
+### {ComponentName}
+- target file: {absolute path; default src/components/peer/{Name}.tsx}
+- props: ```ts
+  interface {Name}Props {
+    ...
+  }
+  ```
+- behavior: {one paragraph}
+- consumed by: {route(s)}
+
+## Mock-data additions
+
+For each entity to add or extend:
+- file: src/lib/mock-data.ts
+- entity: {name} — {one-line description}
+- minimal shape:
+  ```ts
+  {
+    id: 'cr-low-conf-rounding',
+    ...
+  }
+  ```
+
+## Drift items to reconcile
+
+- [D-1] PRD §N says X; MP shows Y; chosen direction:
+  {conform-to-PRD | keep-MP} — {why}
+
+## Edge-case states to wire
+
+For each ?state=NAME branch:
+- route: {path}
+- state: empty | error | stress | permission | data | temporal
+- trigger: {how the URL or condition activates it}
+- what renders: {one paragraph}
 
 ## Assumptions (defaulted, no user input)
-- <question> → defaulted to <choice>
+
+- {question} → defaulted to {choice}; {why}
 ```
 
-If `phase1-scope.md` ends up empty (every route gets nothing changed),
-Stage 3 effectively no-ops — proceed directly to Checkpoint #2 prompt.
+### Hard rules for this file
+
+- EVERY change item carries a finding ID `[F-N]` or drift ID `[D-N]`
+  matching the merged-findings table in phase1-analysis.md.
+- Every "target file" is an ABSOLUTE path (no `<out>` placeholders).
+- Every Mock-data entry includes a TypeScript shape block (so a Stage
+  3 agent doesn't have to invent field names).
+- Tier 2 items the user opted INTO appear. Opted-out items do NOT
+  appear. The Assumptions section logs everything skipped + why.
+- If `phase1-scope.md` ends up empty (no Tier 1 items, no opt-ins),
+  print to user: "No structural changes selected. Stage 3 will no-op;
+  jump to Stage 4 with `--finish`."
+
+### Stop point
+
+After writing phase1-scope.md, print to user:
+
+```
+Stage 2 complete in <wall-clock>.
+
+Outputs:
+- {OUT_ROOT}/.dress-up/spec-audit.md
+- {OUT_ROOT}/.dress-up/walkthrough-friction.md
+- {OUT_ROOT}/.dress-up/phase1-analysis.md
+- {OUT_ROOT}/.dress-up/phase1-scope.md  ← Stage 3 input
+
+→ Open the scope file. Edit it directly if you want to override.
+  Stage 3 reads it verbatim; what's in there is what gets built.
+
+When ready for Stage 3 (scaffolding), run:
+  /dress-up <mp-url> --implement
+```
+
+**STOP.** Do not auto-run Stage 3.
 
 ---
 
@@ -595,27 +877,29 @@ visuals into peer-design-system primitives later — that's NOT your job.
 ### Stage 1 file (your starting point if MODIFY/MERGE_ITEM)
 Read {NEXT_FILE_PATH} first to see what's already there.
 
-### Scope (what to add for this agent)
+### Scope (the ONLY source of truth for what to add)
 {SCOPE_EXCERPT_FROM_PHASE1_SCOPE}
 
-### Relevant PRD section excerpts (verbatim, with citations)
-{PRD_EXCERPTS_FOR_THIS_ROUTE_AND_THESE_ITEMS}
+This is a verbatim slice of `phase1-scope.md` for this route + its
+items. It includes finding IDs, target file path, what-to-add lines,
+mock-data shapes (when relevant), and where each item goes on the
+page. Stage 2 wrote this contract specifically so you wouldn't need
+to re-read the PRD.
 
-### Persona context
-{PERSONA_FROM_PRD}
+**Do NOT read the PRD.** Do NOT read the original MP source. Do NOT
+guess. If the scope excerpt is ambiguous on something, treat that as
+a scope bug and surface it in your output instead of inventing.
 
-### Mock-data fields to use
-{MOCK_DATA_NOTES — which entities/types to reference; do not
-invent new fields, do not rename existing ones}
-
-### Agent-state patterns to apply (if scope includes states)
+### Agent-state patterns (only if scope includes a state item)
 Reference: ~/.claude/skills/agent-states/SKILL.md
-{NAMED_PATTERNS_FOR_SCOPE — e.g., "low_confidence → inline underline
-+ side panel with confidence chip and source link"}
+The scope item will name the pattern by name (e.g., "low_confidence");
+look up the named pattern's recipe in that skill if you don't already
+know it. Don't import the skill itself.
 
-### Edge-case states to add (if scope includes states)
+### Edge-case states (only if scope includes a `?state=NAME` item)
 Pattern: `useSearchParams().get('state')` → switch on value. Implement
-the requested `?state=NAME` branches.
+the requested `?state=NAME` branches per the scope item's "what renders"
+description.
 
 ## Phase 1 style vocabulary (the ONLY raw Tailwind classes you may use)
 
