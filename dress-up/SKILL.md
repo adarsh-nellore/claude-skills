@@ -3,19 +3,40 @@ name: dress-up
 description: |
   Use when the user wants to convert a Magic Patterns (or any
   React+Vite+Tailwind) prototype into a high-fidelity Next.js prototype
-  using the peer-design-system. Pulls the source repo from GitHub,
-  preserves its IA / routes / mock-data / state management, then
-  translates the visual layer into design-system primitives and enriches
-  the content. Optionally reasons over a PRD + brief to expand the IA
-  (add missing screens, widgets, edge cases) via a short
-  AskUserQuestion gate before generation. Spawns per-screen agents in
-  one parallel batch. Target wall-clock: 10-15 min, vs /build-hifi's
-  25-35 min. Triggers: "dress up", "translate this MP prototype",
-  "make this MP repo feel like a real product", "polish this magic
-  patterns app". Composes upstream from any Magic Patterns export.
-  Out of scope: synthesizing a design system, inventing IA from a PRD
-  alone (use /build-hifi for that), reverse direction
-  (peer-DS -> Magic Patterns).
+  using the peer-design-system. Runs as a five-stage pipeline with TWO
+  user-review gates at the dev server:
+
+  - Stage 0-1: clone MP, port routing-only into Next.js (raw Tailwind
+    preserved). User reviews the seed at http://localhost:3053.
+  - Stage 2-3: skill audits MP against the PRD/brief with forced section
+    citations, surfaces missing surfaces / agent states / edge cases /
+    drift, asks the user 2-4 grounded structural questions, then ADDS
+    scaffolding (additive only) to the seed in raw Tailwind. User
+    reviews structural changes at the dev server and can make manual
+    edits.
+  - Stage 4: sweep src/app/ and translate raw Tailwind into
+    peer-design-system primitives with full composition contract,
+    motion, voice, and known-DS-quirks discipline.
+
+  Phase 1 priorities (in order): answer the OG brief 1:1; get feel /
+  flow / IA right; volume + decent content quality (not hyper-realistic
+  prose); edge cases and extras are nice-to-haves. Phase 1 places
+  components SIMPLY so Phase 2 can do heavier visual lifting.
+
+  Compute is liberal — parallel agents per route, plus split-into-
+  sub-agents per item when scope is 3+ independent changes. Wall-clock
+  is the constraint; compute is not. Spawns one parallel batch per
+  stage. Target wall-clock: ~12-18 min total (best case ~10 min if
+  user accepts defaults).
+
+  Triggers: "dress up", "translate this MP prototype", "make this MP
+  repo feel like a real product", "polish this magic patterns app",
+  "analyze the prototype", "finish dress-up", "dress-up resume".
+
+  Composes upstream from any Magic Patterns export. Out of scope:
+  synthesizing a design system, inventing IA from a PRD alone (use
+  /build-hifi for that), reverse direction (peer-DS → Magic Patterns),
+  sources that aren't React.
 license: MIT
 allowed-tools:
   - Read
@@ -30,607 +51,868 @@ allowed-tools:
 
 ## Role
 
-Translator + expander. The user has generated a working but visually
-plain prototype in Magic Patterns (or similar). The IA, flows, and
-component decomposition are good enough to keep. This skill replaces
-the visual layer with peer-design-system primitives, ports the data /
-state verbatim, and enriches sparse content. If a PRD is provided, the
-skill also identifies IA gaps and offers to expand them with the
-user's input.
+Five-stage pipeline with two checkpoint reviews:
 
-## Why this exists (vs /build-hifi)
+```
+Stage 0 — Bootstrap (deterministic, ~30s)
+Stage 1 — Routing-only port (parallel agents, ~2-3 min)
+   ↓
+[Checkpoint #1: dev server runs MP as-is in Next.js, user reviews]
+   ↓
+Stage 2 — Analysis + user dialog (~3-4 min)
+Stage 3 — Add scaffolding (parallel-liberal, ~2-5 min)
+   ↓
+[Checkpoint #2: dev server reloads with structural changes, user reviews
+ + makes manual edits if desired]
+   ↓
+Stage 4 — DS translation (parallel-liberal, ~5-7 min) + build + cleanup
+```
 
-`/build-hifi` asks the LLM to invent everything from a PRD: routes,
-screen list, component decomposition, mock-data shape, state
-management, content prose. That's expensive (~25-35 min) and the IA
-often doesn't match the user's actual intent. Magic Patterns
-generates a working IA + components + mock data in seconds. This
-skill flips the labor split:
+Phase 1 (Stages 0-3) adds STRUCTURAL scaffolding to the MP seed in raw
+Tailwind. Phase 2 (Stage 4) is JUST visual translation to peer-DS.
+Reversing the order eliminates redo waste (no screen styled twice).
 
-- **Magic Patterns owns**: IA, routes, components, mock-data shape,
-  state management, flow logic.
-- **/dress-up owns**: clone the MP repo, port to Next.js + peer-DS,
-  reason over PRD for gaps, generate hi-fi screens with rich copy.
+## Why two phases + this order
 
-Use `/build-hifi` when there's no MP seed (greenfield PRD).
-Use `/dress-up` when there is an MP seed (or any working
-React+Vite+Tailwind prototype).
+The mechanical jobs (port to Next.js, apply DS primitives) and the
+design jobs (reason about gaps, add agent states, add edge cases) are
+cognitively different. Asking one agent to do both at once produces
+"MP with a coat of paint" — the mechanical job wins and PRD context
+gets neglected.
 
-## Inputs
+Splitting them: Stage 3 does structural work in raw Tailwind (cheap to
+write, easy to evaluate); Stage 4 translates that finished structure
+to DS primitives. Each agent has one cognitive mode. Stage 4 can go
+deeper on visual fidelity because translation is its only job.
+
+User can BAIL after Checkpoint #1 (seed looks wrong) or after
+Checkpoint #2 (structural changes are wrong) before burning Stage 4
+time.
+
+## Phase 1 priorities (apply throughout Stages 2-3)
+
+1. **Answer the OG brief 1:1.** The brief (PRD §intro + persona +
+   JTBD, or the --brief notes file) is what the exercise gets graded
+   on. Tier 1 = brief asks MP doesn't address.
+2. **Feel / flow / IA / aesthetic thinking.** Beyond brief.
+3. **Volume + decent content quality.** Enough realistic content to
+   read as a product; NOT hyper-realistic. Don't burn tokens
+   perfecting copy.
+4. **Edge cases and extras are nice-to-haves.** Add if cheap; skip if
+   they'd blow the time budget.
+
+Phase 1 places components SIMPLY (raw `<div className="...">` wrappers
+are fine) so Phase 2 can do heavier visual lifting.
+
+## Compute is liberal; wall-clock is the constraint
+
+Spawn MORE parallel agents whenever it actually reduces wall-clock
+without hurting quality. The caps in this skill are for
+coordination / quality (one agent's scope is too big to reason about
+coherently), NOT to save compute. Don't artificially serialize work
+that could run in parallel.
+
+Concretely:
+- Stage 1: cornerstone-split when MP source for one route > 800 LOC.
+- Stage 3: split into per-item sub-agents when a route's scope has 3+
+  independent additions.
+- Stage 4: cornerstone-split when Stage 3 output for one route > 800 LOC.
+
+## When to run
+
+- An MP prototype exists on GitHub. Pure HTML or Figma-only doesn't
+  qualify.
+- User has the peer-design-system cloned at
+  `~/Projects/adarsh-design-system`.
+- A PRD (`--prd <path>`) is strongly recommended. Without one,
+  Stage 2 analysis is shallow.
+
+## When NOT to run
+
+- The MP IA is wrong AND user wants full redesign with no MP seed —
+  use `/build-hifi` instead.
+- Source is Vue / Svelte / plain HTML — out of scope.
+- Static sketch only — use `/build-lofi`.
+
+## Inputs and invocation
+
+Three commands cover the whole pipeline. Each writes a checkpoint file
+in `<out>/.dress-up/` so the next invocation knows what's done.
+
+### Stage 0-1 (initial)
 
 ```
 /dress-up <github-url> [--prd <path>] [--brief <path>] [--out <folder>]
 ```
 
-- `<github-url>` (required): the MP repo. Skill clones it.
-- `--prd <path>` (optional): a code-ready PRD to drive IA expansion.
-- `--brief <path>` (optional): a short notes file (extra context,
-  feedback to apply).
+- `<github-url>` (required): MP repo URL. Skill clones it.
+- `--prd <path>` (optional but recommended): code-ready PRD for Stage 2
+  citations.
+- `--brief <path>` (optional): short notes file (extra context, user's
+  problem framing).
 - `--out <folder>` (optional): output folder. Default:
-  `~/Documents/{slug}-dressup-<YYYY-MM-DD>/` where `<slug>` comes
-  from the MP repo name.
+  `~/Documents/{slug}-dressup-<YYYY-MM-DD>/`.
 
-If no PRD or brief is provided, the skill skips Beat 3 (gap analysis)
-and translates MP verbatim.
+Runs Stage 0 + Stage 1. Starts dev server. Prints Stage 2 command.
 
-## When to run
-
-- An MP prototype exists on GitHub (or equivalent React+Vite+Tailwind
-  prototype). Pure HTML or Figma-only inputs don't qualify.
-- The user has the peer-design-system cloned to
-  `~/Projects/adarsh-design-system`.
-- The user wants design-system fidelity, not a redesign.
-
-## When NOT to run
-
-- The MP IA is wrong and the user wants to redesign — use `/build-hifi`
-  with a fresh PRD instead.
-- The user wants a static HTML sketch — use `/build-lofi`.
-- The source app isn't React (e.g., Vue, Svelte) — out of scope.
-
-## Pipeline
-
-Target wall-clock: 10-15 min. Six beats, only one of which is open-ended
-LLM reasoning (Beat 3 — and only when a PRD is provided).
-
-### Beat 0 — Bootstrap (~30s, deterministic)
-
-1. Parse args. Resolve `<slug>` from the GitHub repo name.
-2. `git clone <github-url> /tmp/dress-up-<slug>-<timestamp>` to read MP source.
-3. Resolve `<out>` folder. If it exists, error and stop (don't overwrite
-   user work).
-4. `cp -r ~/Projects/adarsh-design-system <out>` to seed the target
-   codebase. Skip `node_modules`.
-5. `cd <out>` and run `node -e` to rename the package.json `name` to
-   `<slug>` (mirrors `setup.sh`).
-6. Strip showcase pages that shouldn't ship in a product app:
-   `rm -rf <out>/src/app/templates <out>/src/app/components`.
-   (Documented bloat: /build-hifi runs ship ~12 demo pages per
-   project. This is the cleanest fix.)
-7. Clear `<out>/src/lib/mock-data.ts` (will be replaced from MP).
-8. Reset `<out>/src/app/page.tsx` and `<out>/src/app/layout.tsx` to
-   minimal stubs (will be regenerated).
-9. `mkdir <out>/.dress-up` for skill working files.
-
-### Beat 1 — Inventory the MP repo (~30s, main thread, deterministic)
-
-Read MP repo structure without LLM calls. Magic Patterns commonly
-uses a nested `src/src/` layout — handle both `src/` and `src/src/`.
-
-Files to read:
-
-- `package.json` — record dependencies (zustand, jotai, redux,
-  react-router-dom, react-hot-toast, framer-motion, lucide-react).
-- The router file (`App.tsx` / `main.tsx`) — extract `<Route>`
-  elements. Map react-router paths to Next.js App Router file paths:
-  - `path="/"` → `src/app/page.tsx`
-  - `path="/archive"` → `src/app/archive/page.tsx`
-  - `path="/archive/:taskId"` → `src/app/archive/[taskId]/page.tsx`
-  - Nested `<Route>` with `<Outlet>` → use URL-param overlays
-    (`?modal=launcher&taskId=...`) rather than parallel routes. This
-    matches the /build-hifi cornerstone pattern and avoids Next.js
-    parallel-route complexity.
-- `pages/*.tsx` — record page files and their default exports.
-- `components/*.tsx` — list component files. Don't read contents yet
-  (Beat 5 agents read the pages they translate; component files are
-  inlined into pages most of the time in MP output).
-- `store.ts` / `store/*.ts` — record state management.
-- `types.ts` — record type definitions.
-- `lib/cn.ts` or similar utility files — record. Note if it imports
-  `tailwind-merge` (MP commonly does; the DS template does not ship
-  `tailwind-merge`).
-- `docs/*.md` — record if present (sometimes MP includes a PRD copy).
-- Any mock-data file — record path and approximate size.
-- **Grep every MP `.tsx`/`.ts` file for `^import` statements** and
-  collect the unique external module names (not `./` or `../`).
-  Compare against the DS `package.json` `dependencies` keys. Any MP
-  import not in the DS deps must be added to the install list in
-  Beat 4. Common additions: `zustand`, `react-hot-toast`,
-  `tailwind-merge`, `react-hook-form`, `zod`. DO NOT add
-  `react-router-dom` — Next.js App Router replaces it.
-
-Write `<out>/.dress-up/inventory.json`:
-
-```json
-{
-  "mp_repo": "...",
-  "mp_commit": "abc1234",
-  "stack": { "react_router": true, "zustand": true, "framer_motion": true },
-  "routes": [
-    { "path": "/", "next_file": "src/app/page.tsx", "mp_source": "src/src/pages/Workspace.tsx", "has_outlet": true, "overlays": ["tasks/new", "tasks/:taskId/evidence", "tasks/:taskId/gaps", "tasks/:taskId/actions", "tasks/:taskId/draft"] },
-    { "path": "/archive", "next_file": "src/app/archive/page.tsx", "mp_source": "src/src/pages/Archive.tsx" },
-    { "path": "/archive/[taskId]", "next_file": "src/app/archive/[taskId]/page.tsx", "mp_source": "src/src/pages/Archive.tsx", "default_export": "TaskArchiveDetail" }
-  ],
-  "components": [...],
-  "mock_data_path": "src/src/store.ts",
-  "types_path": "src/src/types.ts"
-}
-```
-
-### Beat 2 — DS manifest (~10s, main thread)
-
-Glob and list the peer-DS primitives the agents will use. Don't read
-component file bodies — only directory listings + the `index.ts` re-exports.
-
-Build a static manifest block (~1500 tokens) listing every primitive
-with its closed-enum props. Append this block to every per-screen
-agent prompt in Beat 5. The block is the same for every agent —
-build it once, reuse N times.
-
-Write `<out>/.dress-up/ds-manifest.md`. Required sections:
-
-**Per-primitive tone enums (CRITICAL — agents will silently regress on these).**
-Each typography/tone-bearing primitive has its OWN tone union. They
-are NOT interchangeable:
-
-- `<Heading tone>`: `"ink" | "muted"`
-- `<Body tone>`: `"ink" | "muted" | "faint"`
-- `<MetaText tone>`: `"default" | "faint" | "faintest" | "ink"` — NO `"muted"`
-- `<MetaLabel tone>`: `"default" | "muted"`
-- `<Pill variant>`: `"outlined" | "filled" | "accent" | "ghost"`
-
-Read the actual `export type ...Tone` lines from each primitive file
-when building the manifest. If an enum changes upstream, the manifest
-must reflect it. **Do not paraphrase. Copy verbatim.**
-
-- Typography primitives: `<Heading size>`, `<Body size>`, `<MetaLabel>`,
-  `<MetaText size>`, `<Caption size>`, `<PeerBrand size>`.
-- Layout: `<Stack gap>`, `<Cluster gap>`, `<AppShell>`, `<PageContainer>`,
-  `<TopNav>`, `<LeftNav>`, `<DocFrame>`, `<Drawer>`, `<Popover>`,
-  `<RightRail>`, `<SplitFrame>`, `<LinkButton>`.
-- UI: `<Accordion>`, `<Alert>`, `<Avatar>`, `<Badge>`, `<Banner>`,
-  `<Button>`, `<Card>`, `<Checkbox>`, `<Dot>`, `<DropdownMenu>`,
-  `<EmptyState>`, `<FormField>`, `<Glyph>`, `<Hairline>`,
-  `<IconButton>`, `<Input>`, `<KeyChip>`, `<Modal>`, `<Pagination>`,
-  `<Pill>`, `<ProgressBar>`, `<ProgressDots>`, `<Radio>`, `<Row>`,
-  `<SearchInput>`, `<Select>`, `<Skeleton>`, `<Slider>`, `<Spinner>`,
-  `<Stat>`, `<Stepper>`, `<Switch>`, `<Tab>`, `<TabBar>`, `<Table>`,
-  `<Tabs>`, `<Tag>`, `<Textarea>`, `<TextLink>`, `<Tile>`, `<Toast>`,
-  `<Tooltip>`.
-- Patterns: `<PageHeader>`, `<Prose>`, `<ActionBar>`, `<FilterBar>`,
-  `<KeyValue>`.
-- Charts: `<BarChart>`, `<DonutChart>`, `<LineChart>`, `<Sparkline>`.
-- Color tokens: `ink`, `muted`, `faint`, `faintest`, `hairline`,
-  `hairline-strong`, `soft`, `stripe`, `paper`, `coral`, `coral-soft`,
-  `green`, `green-soft`, `gold`, `gold-soft`, `info`, `accent-indigo`.
-- Spacing buckets: `tight`, `cozy`, `comfortable`, `block`, `section`,
-  `page`, `hero`.
-
-### Beat 3 — Structural clarification questions (REQUIRED, ~1-2 min, AskUserQuestion + ONE light LLM reasoning pass)
-
-**This beat is REQUIRED on every run. Do not skip it.** Even if no
-PRD is provided, the inventory itself surfaces structural questions
-the user should weigh in on before generation.
-
-The premise: the user can't usefully answer brand/persona/density
-questions blind, but they CAN answer concrete structural questions
-grounded in what MP produced. Keep questions problem-focused and
-short. The user's job here is to flag IA/UX decisions, not to write
-a spec.
-
-### What to ask
-
-After Beat 1 inventory + optional PRD/brief read, the skill picks
-2-4 questions from these buckets, only including a bucket if the
-inventory shows a real decision in it:
-
-1. **Missing routes / surfaces**.
-   - "MP shipped N routes ({list}). Looking at the cornerstone's
-     scope, it likely needs one of: a notifications view, a
-     settings page, an analytics/reports view. Add any?"
-   - If PRD is provided, ground the options in PRD's persona
-     surfaces instead of generic guesses.
-   - `multiSelect: true`.
-
-2. **Nested flow shape**.
-   - "MP's cornerstone has N nested routes ({list of overlays}).
-     Should these be: ?modal= overlays (default), Drawer panels,
-     or full top-level routes?"
-   - One choice applies to all overlays unless the user types a
-     mixed answer.
-
-3. **Edge-case states to ship**.
-   - "MP only renders the happy path. Want me to add
-     ?state=empty|error|stress branches to the cornerstone? Which?"
-   - `multiSelect: true`. Options: empty, error, stress, none.
-
-4. **Cornerstone polish weighting**.
-   - "Of the {N} routes, which 1-2 are the cornerstone you want
-     polished hardest? I'll spend extra agent budget there
-     (sub-component split, denser content, more motion)."
-   - Single-select with multi-route option.
-
-5. **Specific missing widget (only if PRD lists one MP omits)**.
-   - "PRD's component inventory for {route} lists {component}
-     which MP doesn't render. Add it?"
-
-### Rules
-
-- Cap at **4 questions total** per run. Pick the buckets with the
-  highest information value for this specific MP repo. If MP shipped
-  rich nested flows, bucket 2 is high-value. If MP is barebones (1-2
-  routes), bucket 1 is high-value.
-- Use the `AskUserQuestion` tool. One call, multiple questions.
-- **Default-with-flag on skip.** For each question, define a
-  sensible default before asking. If the user picks the "skip / use
-  default" option (always include one), proceed with the default
-  AND write the assumption to `<out>/DRESS-UP-REPORT.md`'s
-  Assumptions section ("Defaulted nested flow shape to ?modal=
-  overlays — no user input"). The user can flip it in a re-run.
-- Questions are STRUCTURAL only. NEVER ask about brand voice, color
-  palette, persona personality, copy tone. The DS dictates voice;
-  MP's domain vocabulary dictates persona; the skill should not
-  defer those to the user mid-run.
-
-### Output
-
-Write `<out>/.dress-up/ia-plan.md`:
-
-- `## Verbatim` — list of MP routes to translate as-is.
-- `## Add routes` — list of new routes (path + intent + mock-data
-  notes).
-- `## Add widgets` — per existing route, widgets to add.
-- `## Nested flow shape` — overlay style chosen (modal / drawer /
-  route).
-- `## Edge-case states` — per route, `?state=` params + what each
-  branch shows.
-- `## Cornerstone weighting` — which routes get sub-component split
-  + extra agent budget in Beat 5.
-- `## Assumptions (defaulted)` — every question the user skipped,
-  with the default that was applied.
-
-### Beat 4 — Port types + state + mock data (~1 min, mostly deterministic + 1 light LLM pass)
-
-1. Copy MP `types.ts` → `<out>/src/lib/types.ts` verbatim.
-2. Copy MP store → `<out>/src/lib/store.ts`. Prepend `'use client';`
-   on line 1. Zustand works in Next.js client components untouched.
-   If MP uses jotai or redux, same treatment.
-3. Copy MP mock data → `<out>/src/lib/mock-data.ts`. If the store and
-   mock data are inlined in one file (common in MP output), keep
-   them inlined.
-4. Copy MP `lib/cn.ts` or equivalent → `<out>/src/lib/cn.ts`.
-   If MP's `cn.ts` imports `tailwind-merge`, you have two options:
-   (a) keep it and add `tailwind-merge` to deps, or
-   (b) replace the file with a `clsx`-only version:
-   `import clsx from 'clsx'; export const cn = clsx;`.
-   Default to (a) — preserves MP behavior. Use (b) only if the user
-   explicitly wants a leaner dep set.
-5. If Beat 3 added new routes, widgets, or edge-case states that need
-   new mock-data entries: launch ONE general-purpose agent to append
-   entries to the existing arrays in `<out>/src/lib/mock-data.ts`.
-   Agent must not change types or rename existing fields. Cap: one
-   Edit call.
-6. Update `<out>/package.json` from the Beat 1 dep-grep results.
-   Common additions you'll need to install yourself (npm i):
-   - `zustand` (if MP uses it)
-   - `react-hot-toast` (if MP uses it)
-   - `tailwind-merge` (if MP's `cn.ts` imports it)
-   - `lucide-react` — **NOT in DS deps by default**, but MP commonly
-     uses it for icons. Install it; the per-screen agents will use
-     `import { X, Y } from 'lucide-react'` heavily.
-   - `framer-motion` — already in DS; verify present
-   - **Do NOT add `react-router-dom`** — Next.js App Router replaces it.
-7. Run `npm install` ONCE here (before Beat 5), not in Beat 6. If
-   you wait until Beat 6, the build fails with "Module not found"
-   errors for every newly-added dep and you'll have to re-build.
-
-### Beat 5 — Parallel per-screen translation (~3-5 min, N parallel LLM agents)
-
-Spawn N agents in **one tool-call batch**. N is NOT just the route
-count. It's the count after applying the cornerstone-split rule
-below.
-
-**Cornerstone-split rule (the most important rule in this skill).**
-A single agent translating ~2700 LOC of MP source in one shot
-produces ~2000 LOC of output, blows the LOC cap, hits ~30 audit
-violations, and takes 8-10 minutes. The fix is to split the agent's
-work, not to give one agent more rules.
-
-Before spawning, compute each route's translation surface:
+### Stage 2-3 (analysis + scaffolding)
 
 ```
-route_surface = LOC(mp_page) + sum(LOC(imported_mp_components))
+/dress-up <github-url> --analyze [--prd <path>] [--brief <path>]
 ```
 
-If `route_surface > 800`:
-- Split into N+1 agents for that route:
-  - One **shell agent**: writes the page wrapper (TopNav, layout,
-    main content frame, side panel structure). Doesn't render the
-    modal bodies or the heaviest sub-panels.
-  - One agent per **modal / overlay / heavy sub-panel** (typically
-    the items that were nested routes in MP). Each writes a single
-    sub-component file at `src/components/screens/<route>/<Name>.tsx`.
-- The shell agent imports the sub-component files and renders them
-  conditionally based on `?modal=` etc.
-- For the Peer AI cornerstone this means: 1 shell + 1 each for
-  Launcher, Evidence, Gaps, Actions, Draft → **6 agents in
-  parallel** at ~150-250 LOC each, instead of 1 agent at ~2000 LOC.
-  Wall-clock for the slowest agent: ~2-3 min vs the monolithic
-  agent's 8-10 min.
+Verifies Stage 1 checkpoint, runs Stages 2 + 3. Reloads dev server.
+Prints Stage 4 command.
 
-If `route_surface ≤ 800`: one agent for the whole route is fine.
+If `--prd` was passed at Stage 1, the path is in the checkpoint and
+doesn't need to be re-passed. Re-pass to override.
 
-Each agent receives:
-
-1. The **original MP page file** as a concrete reference. (This is
-   the killer advantage: vastly more precise than a PRD section.
-   Each agent sees exactly what to translate.)
-2. The MP component files relevant to ITS scope ONLY. A modal agent
-   gets the modal source + the small set of MP UI primitives it
-   needs. The shell agent gets the page + sidebar source. Splitting
-   the input matters — don't feed every modal source to the shell
-   agent.
-3. `<out>/.dress-up/ds-manifest.md` (the DS primitive inventory with
-   per-primitive tone enums).
-4. The relevant `ia-plan.md` excerpt for this route (widgets to add,
-   edge-case states to handle).
-5. The **hard contract**, **motion rules**, **voice rules**, and
-   **Next 16 Suspense rule** — inlined in the agent prompt (see
-   "Per-screen agent prompt template" below).
-6. The **known DS quirks** block (Table generic cast, type-import
-   rule — see below).
-
-Each agent receives:
-
-1. The **original MP page file** as a concrete reference. (This is
-   the killer advantage: vastly more precise than a PRD section.
-   Each agent sees exactly what to translate.)
-2. The MP component files that the page imports — included inline in
-   the prompt if total < 1500 lines, else just the function
-   signatures.
-3. `<out>/.dress-up/ds-manifest.md` (the DS primitive inventory).
-4. The relevant `ia-plan.md` excerpt for this route (widgets to add,
-   edge-case states to handle).
-5. The **hard contract**, **motion rules**, **voice rules**, and
-   **Next 16 Suspense rule** — inlined in the agent prompt (see
-   "Per-screen agent prompt template" below).
-
-Per-agent output: ONE TSX file. For shell agents that's the route's
-`page.tsx`. For sub-component agents that's
-`src/components/screens/<route>/<Name>.tsx`. The file must:
-
-- **Enforce the LOC cap with teeth.** Shell pages: 200-400 LOC.
-  Sub-component files: 150-300 LOC. Single-agent (non-split) pages:
-  300-500 LOC. If the agent would exceed the cap, instruct it to
-  STOP, return a note "needs sub-split", and not write the file.
-  (Empirically: agents that go 2x over the cap also produce 5-30
-  audit violations. The cap is a quality proxy, not just an
-  aesthetic constraint.)
-- Use peer-DS primitives only (no raw `<h1>`, `<p>`, `<div
-  className="flex flex-col gap-N">`).
-- Preserve MP's layout structure, modal stack pattern, banner
-  pattern. Translate `<Outlet>` + nested routes to `?modal=`-driven
-  overlays using `useSearchParams()`.
-- Replace generic Tailwind (`bg-blue-600`, `text-zinc-900`) with
-  semantic tokens applied as utility classes (`text-ink`, `bg-coral`,
-  `border-hairline-strong`, `bg-soft`). NOT as `tone=` props unless
-  the primitive's tone union actually includes that value (check the
-  per-primitive enums in the manifest — MetaText does NOT accept
-  `"muted"`, it accepts `"faint"`).
-- Enrich copy: where MP renders placeholder text or thin labels,
-  write domain-specific prose using the rich mock data (named
-  entities, dates, counters). Don't invent new entities; use what
-  exists in `mock-data.ts`.
-- Add edge-case `?state=` branches identified in Beat 3.
-- Wrap any default export that calls `useSearchParams()` in
-  `<Suspense fallback={null}>`.
-- Apply page entrance stagger via `anim-fade-in` / `anim-fade-in-1` /
-  `anim-fade-in-2` classNames on top-level sections. (Note: the base
-  class is `anim-fade-in` without a number suffix; numbered variants
-  are 1-5.)
-
-### Known DS quirks (must be in every agent prompt)
-
-These trip the build deterministically. Tell every per-screen agent:
-
-- **Table generic constraint.** `<Table<T>>` requires
-  `T extends Record<string, unknown>`. Domain types from
-  `@/lib/types` don't satisfy this. Cast at the use site:
-
-  ```tsx
-  const columns: TableColumn<MyType & Record<string, unknown>>[] = [...];
-  // ...
-  <Table<MyType & Record<string, unknown>>
-    columns={columns}
-    rows={rows as (MyType & Record<string, unknown>)[]}
-    rowKey={(r) => r.id}
-  />
-  ```
-
-- **Type-import rule.** NEVER use
-  `ReturnType<typeof useTaskStore>['x'][string]` to type panel
-  props or function parameters. The zustand selector type doesn't
-  infer through index access cleanly and the TS check fails. Import
-  the named types from `@/lib/types` directly:
-
-  ```tsx
-  import type { EvidenceItem, GapItem, ActionItem } from '@/lib/types';
-  function EvidencePanel({ items }: { items: EvidenceItem[] }) { ... }
-  ```
-
-- **Fixed-width sidebars.** The DS audit fails `w-[400px]` (or any
-  `w-[N≥300px]`). Use `w-[clamp(320px,28vw,420px)]` or `<SplitFrame>`
-  for the 2-column shell.
-
-- **No `framer-motion` in NEW code.** MP relies on it; replace
-  `motion.div` with regular `<div>` + `anim-fade-in*` classes.
-  AnimatePresence on banner stacks → conditional render with the
-  fade classes. (The DS still ships framer-motion as a dep, but the
-  contract is "DS owns motion, screens don't".)
-
-### Beat 6 — Build + audit + report (~1-2 min, deterministic + 1 targeted cleanup if needed)
-
-1. `npm install` already ran in Beat 4.7; skip it here unless Beat 5
-   agents added new deps. (They shouldn't — the prompt forbids it.)
-2. `npm run build` (prebuild runs the audit automatically). Capture
-   output to `<out>/.dress-up/build.log`.
-3. **If audit fails with mechanical violations** (text-[Npx], raw
-   flex gap-N, MetaText tone="muted", etc.) — spawn ONE focused
-   cleanup agent per offending file in parallel, scoped to "fix
-   these N audit violations, change nothing else". This is the
-   one place auto-fix is allowed because the violations are
-   deterministic and the fix is mechanical. Cap: one round of
-   cleanup agents. If audit still fails after that, stop and
-   report.
-4. **If build fails with type errors** — surface the first 30 lines
-   of the error verbatim. Do not loop. The user can paste the error
-   back and ask for a targeted fix. Common root causes (check
-   first): missing dep that wasn't grepped in Beat 1, Table generic
-   cast missing, useSearchParams without Suspense wrapper.
-5. Write `<out>/DRESS-UP-REPORT.md`:
-   - MP source URL + commit SHA
-   - Inputs (PRD path, brief path)
-   - Route map (verbatim routes + added routes)
-   - Widgets added per route
-   - Edge-case coverage matrix
-   - **Assumptions section** — every Beat 3 question the user
-     skipped + the default applied (so re-runs can target them).
-   - Build status, audit violations
-   - Wall-clock timing
-   - `npm run dev` command + port
-6. Print to user: report path + dev command. Stop.
-
-## Per-screen agent prompt template
-
-Each Beat 5 agent receives a prompt of this shape. Build it once with
-shared sections + per-screen variable parts.
+### Stage 4 (DS translation)
 
 ```
-You are translating a Magic Patterns React page into a Next.js 16
-App Router page using the peer-design-system.
-
-## The MP source (verbatim — translate this)
-{MP_PAGE_TSX_CONTENT}
-
-## MP component files this page imports
-{MP_COMPONENT_FILES}
-
-## peer-design-system manifest (the only primitives you may import)
-{DS_MANIFEST}
-
-## Routing translation
-Original react-router path: {RR_PATH}
-Target Next.js file: {NEXT_FILE}
-{IF_HAS_OUTLET: "Translate <Outlet>+nested-routes to ?modal=NAME
-overlays driven by useSearchParams()."}
-
-## Widgets to add (from PRD gap analysis)
-{IA_PLAN_EXCERPT_WIDGETS}
-
-## Edge-case states to handle
-{IA_PLAN_EXCERPT_STATES}
-
-## Hard contract (every rule applies)
-- No new color values. All colors via DS tokens (text-ink, bg-coral, ...).
-- No hex codes in className or style. No arbitrary Tailwind like [#abc].
-- No new fonts. No next/font imports.
-- No external UI kits (radix, shadcn, headlessui, mantine, react-aria).
-- No new chart libraries. Use DS BarChart / DonutChart / LineChart /
-  Sparkline only.
-- No inline style={{...}} except one-off positioning (top/left/transform).
-- No raw <h1>-<h6>. Use <Heading size="display|h1|h2|h3|h4">.
-- No raw <p className=...>. Use <Body size="lead|body|small">.
-- No raw flex flex-col gap-N. Use <Stack gap="...">.
-- No raw flex items-* gap-N. Use <Cluster gap="...">.
-- No <Button href>. Use <LinkButton href>.
-- No new files outside src/app/{route}/ and src/lib/.
-- Domain vocabulary from the mock data and PRD. Never lorem ipsum.
-
-## Motion rules
-- Page entrance stagger: top-level sections get className
-  "anim-fade-in-0", "anim-fade-in-1", "anim-fade-in-2" by depth.
-- Card / Button / TableRow primitives carry hover transitions
-  intrinsically. Don't override.
-- No framer-motion imports in NEW code. (Existing MP framer-motion
-  usage may be preserved if it's already in the source file and
-  removing it would break layout; prefer DS motion utilities when
-  possible.)
-- No inline style={{ animation: ... }} or style={{ transition: ... }}.
-- No new @keyframes.
-
-## Voice rules
-- No em dashes in YOUR prose. Use periods, semicolons, colons, parens.
-  (Em dashes inside string literals copied from the MP source or
-  mock data are fine.)
-- No "you" in product copy unless the MP source already uses second
-  person. Rewrite by naming the persona or using passive voice.
-- No AI slop: no decorative arrows, no fake quotes, no punchy 4-7
-  word headers, no aphoristic openers, no "X, not Y" parallels.
-- No filler ("essentially", "ultimately", "at its core").
-
-## Next 16 Suspense rule
-If your default export calls useSearchParams() (directly or via a
-child component), wrap the export in <Suspense fallback={null}>:
-
-  function ScreenInner() { /* all the body */ }
-  export default function Screen() {
-    return <Suspense fallback={null}><ScreenInner /></Suspense>;
-  }
-
-If you skip this, the build will fail with a CSR-bailout error.
-
-## Output contract
-- Write ONE file: {NEXT_FILE}
-- Single self-contained TSX file (no new component files unless > 600 LOC).
-- File must import only from "@/components/{ui,layout,charts,patterns,typography}",
-  "@/lib/...", "next/...", "react", "react-dom", "lucide-react",
-  "clsx", and (if MP used them) "zustand", "react-hot-toast",
-  "framer-motion".
-- Top of file: 'use client'; if the page uses any hooks (useState,
-  useSearchParams, zustand store, etc.).
-- Use the mock data from @/lib/mock-data and types from @/lib/types.
-- Preserve MP's domain specificity in copy. Enrich where MP was thin.
-
-Use Write, not Edit. The target file is a fresh stub.
+/dress-up <github-url> --finish [--notes <path>] [--notes-text "..."]
 ```
+
+Verifies Stage 3 checkpoint, runs Stage 4 (DS translation + build +
+audit + cleanup). Prints final report path + dev URL.
+
+Optional `--notes` / `--notes-text`: user's feedback after Checkpoint
+#2 (gets routed to relevant Stage 4 agents).
 
 ## Hard contract for the main thread (the skill itself)
 
 - **Never run `git push`, `gh pr create`, `gh repo create`, or any
   remote write.** Local clone + local generation only.
-- **Never overwrite an existing `<out>` folder.** If it exists,
-  error and stop.
+- **Never overwrite an existing `<out>` folder.** If it exists during
+  a fresh invocation (no `--analyze` / `--finish`), error and stop.
 - **Never delete the user's `~/Projects/adarsh-design-system` clone.**
-  Always `cp -r` from it to `<out>`, never `mv`.
-- **Never auto-loop a build-fix-rebuild cycle.** Print the error,
-  stop, let the user drive.
-- **Never edit MP's `/tmp/dress-up-...` clone.** Read-only.
-- **Never invoke `/build-hifi` from within this skill.** They are
-  separate workflows.
+  Always `cp -r`, never `mv`.
+- **Never auto-loop a build-fix-rebuild cycle** beyond the one round
+  of cleanup agents in Stage 4 Beat 4.3.
+- **Never edit MP's `/tmp/dress-up-mp-...` clone.** Read-only.
+- **Never auto-run the next stage.** Each stage stops at its
+  checkpoint; user must explicitly invoke the next command.
 
-## Stop condition
+---
 
-After Beat 6 prints the report path + `npm run dev` command, end the
-turn. Do not offer to start the dev server, open browsers, or take
-next steps. The user drives.
+# STAGE 0 — Bootstrap (~30s, deterministic, no LLM)
+
+1. Parse args. Resolve `<slug>` from the GitHub repo name (kebab-case).
+2. Resolve `<out>` folder. If it exists, error and stop.
+3. `git clone --depth 1 <github-url> /tmp/dress-up-mp-<slug>-<timestamp>`
+   (read-only reference). Record the commit SHA.
+4. `cp -r ~/Projects/adarsh-design-system <out>`. Skip `node_modules`.
+5. Rename `<out>/package.json` `name` to `<slug>`.
+6. Strip showcase pages: `rm -rf <out>/src/app/templates <out>/src/app/components`.
+   Clear `<out>/src/lib/mock-data.ts` stub.
+7. **Disable the audit hook for Stages 1-3.** Rename
+   `<out>/package.json` `prebuild` script key to
+   `prebuild:audit-disabled`. (Stage 4 Beat 4.1 renames it back.)
+8. `mkdir <out>/.dress-up`. Write `<out>/.dress-up/bootstrap-done.json`:
+
+```json
+{
+  "stage": 0,
+  "completed_at": "ISO-8601",
+  "mp_repo": "<github-url>",
+  "mp_commit": "<sha>",
+  "mp_clone": "<temp path>",
+  "out": "<absolute path>",
+  "slug": "<slug>",
+  "prd_path": "<absolute or null>",
+  "brief_path": "<absolute or null>"
+}
+```
+
+---
+
+# STAGE 1 — Routing-only port (~2-3 min, parallel agents)
+
+## Beat 1.1 — Inventory MP + dep grep (~30s, main thread)
+
+Read MP repo structure without LLM. Handle both `src/` and the common
+Magic Patterns `src/src/` nested layout.
+
+Files to record:
+
+- `package.json` — list deps (zustand, react-hot-toast, framer-motion,
+  lucide-react, tailwind-merge, etc.).
+- Router file (`App.tsx` / `main.tsx`) — extract `<Route>` elements.
+  Map to Next.js App Router file paths:
+  - `path="/"` → `src/app/page.tsx`
+  - `path="/archive"` → `src/app/archive/page.tsx`
+  - `path="/archive/:id"` → `src/app/archive/[id]/page.tsx`
+  - Nested `<Route>` with `<Outlet>` → `?modal=NAME` URL params on
+    the parent route.
+- `pages/*.tsx` — page files + default exports.
+- `components/*.tsx` — file list + sizes.
+- `store.ts` / `store/*.ts` — state lib.
+- `types.ts` — type defs.
+- `lib/cn.ts` — note if it imports `tailwind-merge`.
+- `docs/*.md` — present? (sometimes MP includes a PRD copy).
+- Mock-data file — path + size.
+
+**Dep grep:** grep every MP `.tsx`/`.ts` for `^import` statements,
+including multi-line imports (`import {\\n  Foo,\\n  Bar\\n} from 'lucide-react'`).
+Collect unique external module names. Compare against DS deps. Anything
+missing goes on the Beat 1.2 install list.
+
+Common additions: `zustand`, `react-hot-toast`, `tailwind-merge`,
+`lucide-react`. **NEVER add `react-router-dom`** — Next.js replaces it.
+
+Save inventory to `<out>/.dress-up/inventory.json`.
+
+## Beat 1.2 — Deterministic file copies + install (~1 min, no LLM)
+
+```bash
+cp <mp>/path/to/types.ts <out>/src/lib/types.ts
+{ echo "'use client';"; echo ""; cat <mp>/path/to/store.ts; } > <out>/src/lib/store.ts
+# If MP inlines mock data in store.ts, also copy it to mock-data.ts as a clone
+{ echo "'use client';"; echo ""; cat <mp>/path/to/store.ts; } > <out>/src/lib/mock-data.ts
+cp <mp>/path/to/lib/cn.ts <out>/src/lib/cn.ts  # if present
+```
+
+Update `<out>/package.json` with detected deps. Run `npm install` ONCE
+here (so Stage 1 builds work).
+
+Patch `<out>/src/app/layout.tsx`:
+- Add `<Toaster />` from `react-hot-toast` inside `<body>` if MP uses it.
+- Update `title` / `description` to sensible MP-derived names.
+
+## Beat 1.3 — Per-route literal-port agents (~1-2 min parallel)
+
+Spawn one agent per route in ONE parallel batch.
+
+### Cornerstone-split rule (parallel-liberal)
+
+If a route's total source LOC (page + imported MP components) > 800,
+SPLIT into shell + sub-component agents in parallel:
+
+- ONE shell agent: writes `src/app/<route>/page.tsx` with TopNav,
+  layout scaffolding, main content slot, and a modal-overlay dispatcher
+  that conditionally renders `?modal=NAME` matches.
+- N sub-component agents: each writes ONE
+  `src/components/screens/<route>/<Name>.tsx` for one modal or one
+  heavy sub-panel (e.g. EvidenceModal.tsx, GapsModal.tsx).
+- Shell imports the sub-components.
+
+For Peer AI's 2700-LOC Workspace: 1 shell + 5 modal agents in parallel,
+each ~150-250 LOC of input, slowest ~2-3 min. Wall-clock = slowest, not
+sum. Don't artificially cap agent count.
+
+### Per-route literal-port agent prompt template
+
+```
+You are doing a LITERAL PORT of one Magic Patterns React page to
+Next.js 16 App Router. Do not redesign. Do not enrich content. Do
+not swap raw <div> for primitives. Just make it work in Next.js.
+
+## Target file (write here)
+{NEXT_FILE_PATH}
+
+## Source files to read
+- {MP_PAGE_PATH} — the page (your primary input)
+- {MP_COMPONENT_PATHS} — any MP components this page imports
+
+## Job
+
+1. Translate react-router → Next.js App Router:
+   - Replace `react-router-dom` imports with `next/navigation` +
+     `next/link`.
+   - `navigate('/foo')` → `useRouter().push('/foo')`.
+   - `<Link to="/foo">` → `<Link href="/foo">` from `next/link`.
+   - `<Outlet>` + nested routes → `?modal=NAME` URL params consumed via
+     `useSearchParams()`.
+   - `useParams()` from react-router → `useParams()` from
+     `next/navigation`. For Next 16 dynamic routes the param type is
+     `Promise<{...}>` for server components; use the React `use()`
+     hook in client components.
+
+2. Add `'use client';` at the top if any hook is used.
+
+3. Wrap default export in `<Suspense fallback={null}>` if the page
+   calls `useSearchParams()` (directly or via a child). Next 16 fails
+   the build with CSR-bailout error otherwise.
+
+4. Preserve every `<div className="...">` and every Tailwind class
+   verbatim from MP. Including `bg-blue-600`, `text-zinc-900`,
+   `gap-2`, `flex flex-col`. Do NOT swap raw HTML for DS primitives.
+
+5. Inline sub-component logic from `./components/...` into the page
+   file as named functions (or into separate files under
+   `src/components/screens/<route>/` if cornerstone-split applies).
+
+6. Imports:
+   - `react`, `next/navigation`, `next/link`
+   - `react-hot-toast`, `lucide-react`, `framer-motion` (keep MP's
+     usage — Stage 4 may strip)
+   - `@/lib/store`, `@/lib/types`, `@/lib/mock-data`, `@/lib/cn`
+   - `clsx` (transitively via cn)
+
+7. DO NOT add new content, widgets, features, motion, or structure.
+
+## Output
+
+Use Write. Report: "Ported {LOC} LOC" in one line at end.
+```
+
+## Beat 1.4 — Build + dev server + checkpoint (~30s)
+
+1. `cd <out> && npm run build` (audit disabled; this is just `next build`).
+2. If build fails: surface first 30 lines verbatim, stop. Common roots:
+   missing Suspense wrapper, missing dep Beat 1.1 didn't catch.
+3. Start dev server in background: `PORT=3053 npm run dev &`. Capture
+   PID. Wait ~3s for "Ready".
+4. Write `<out>/.dress-up/stage1-done.json` with route map, wall-clock,
+   PID, dev port.
+5. Print to user:
+
+```
+Stage 1 complete in <wall-clock>. <N> routes ported.
+Dev server: http://localhost:3053
+
+→ Open it. You'll see the MP app rendered in Next.js as-is.
+  This is the "seed" — no changes, no design system applied.
+
+When you're ready for analysis + scaffolding (Stage 2-3), run:
+  /dress-up <mp-url> --analyze [--prd <path>] [--brief <path>]
+```
+
+**STOP.** Do not auto-run Stage 2.
+
+---
+
+# STAGE 2 — Analysis + user dialog (~3-4 min)
+
+## Beat 2.1 — Verify checkpoint + load PRD (~10s)
+
+Verify `<out>/.dress-up/stage1-done.json` exists. If not, error.
+
+Read PRD from `--prd <path>` (or from stage1 checkpoint if previously
+passed). If no PRD, proceed with shallow analysis (MP + --brief only)
+and note in output: "PRD not provided; analysis limited to brief +
+obvious IA holes."
+
+## Beat 2.2 — Analysis pass with forced PRD citations (~2-3 min, ONE main-thread LLM)
+
+Single analytic pass. Forces section-by-section PRD citations so the
+agent actually parses the PRD instead of skimming.
+
+Write `<out>/.dress-up/phase1-analysis.md` with required structure:
+
+```markdown
+# Phase 1 Analysis — <slug>
+
+## Brief-fidelity scan (HIGHEST PRIORITY)
+The OG brief (PRD §intro + persona + JTBD, or --brief notes file)
+lists these core asks: <enumerate verbatim with section citations>.
+For each core ask: yes / partial / no — does MP address it?
+List "no" items first; these are Tier 1 by default.
+
+## Persona alignment
+- PRD §<N>: <verbatim persona name + key context>
+- MP currently addresses: <observation>
+- Gap: <specific>
+
+## Surface inventory
+- PRD §<N> (Core Screens): lists <A, B, C, D, E>
+- MP shipped: <subset>
+- Missing routes: <list with PRD section + persona use case>
+
+## PRD-MP drift (places they DISAGREE, not just omit)
+For each MP behavior or content that CONTRADICTS the PRD:
+- PRD §<N> says: <verbatim claim>
+- MP shows: <observed contradicting behavior>
+- Possible reasons: (a) user iterated MP since PRD — intentional,
+  (b) MP wasn't built to that spec — oversight.
+- Options:
+  (1) keep MP's version, treat PRD as stale
+  (2) Stage 3 conforms MP to PRD
+  (3) skip, log as assumption
+
+If no contradictions: "No PRD-MP drift detected."
+
+## Agent states
+For each MP route, cross-reference PRD §<N> (Agent Capability Specs)
+and the 13 patterns from ~/.claude/skills/agent-states/SKILL.md:
+- Currently expresses: <list with where in MP UI>
+- PRD requires also expressing: <list with citations>
+- Recommended pattern per state: <e.g. "low_confidence → underline
+  + side panel">
+
+## Edge cases
+PRD §21 rows: empty / error / stress / permission / data / temporal.
+For each row × each MP route: present | missing | N/A.
+**Bias: edge cases are Tier 2 by default unless they break the brief.**
+
+## Component inventory gaps
+PRD §<N> lists per-route components. Diff against MP. List missing.
+
+## Mock-data depth
+PRD names specific entities, dates, quotes. Check MP usage.
+**Bias: existing mock-data is "good enough" unless wrong, not just
+thin. Don't rewrite for polish.**
+
+## Recommendation tiers
+- **Tier 1 (must-do — answers the OG brief)**: <list with brief
+  citation + cost estimate>. These are implemented by default.
+- **Tier 2 (nice-to-have)**: <list>. User opts IN per item.
+- **Tier 3 (skip this pass)**: <list>.
+```
+
+If PRD missing a referenced section, record "PRD missing: <expected
+section>" rather than fabricating.
+
+## Beat 2.3 — User dialog (~1 min, AskUserQuestion)
+
+Cap 4 questions. Order by Tier:
+
+1. **Tier 1 confirmation** (only if Tier 1 has >2 items):
+   multiSelect — "Brief asks for X, Y, Z that MP doesn't address.
+   I'll implement all by default. Uncheck to skip."
+2. **PRD-MP drift** (only if drift section non-empty):
+   single-select — "MP diverges from PRD in N places. Default = keep
+   MP's version. Options: keep MP / conform to PRD / case-by-case."
+3. **Tier 2 opt-in** (only if Tier 2 non-empty):
+   multiSelect — "Optional adds (won't fail the brief if skipped).
+   Default = none."
+4. **New routes** (only if missing routes list non-empty):
+   multiSelect — "Missing routes from PRD. Default = none."
+
+Skip a bucket if analysis shows no real decision in it. Always include
+"Skip / use default" per question.
+
+**Default-with-flag on skip:** every defaulted question gets the
+default applied AND logged to the Assumptions section of the final
+report.
+
+**Default behavior if user skips everything: implement Tier 1, skip
+Tier 2/3, keep MP's drift versions.** Fast path that still answers
+the brief.
+
+Save chosen scope to `<out>/.dress-up/phase1-scope.md`:
+
+```markdown
+# Phase 1 Scope
+
+## Routes to modify
+- <route>: add widget X (PRD §N), wire agent state Y, add ?state=empty
+
+## Routes to add (new)
+- /<path>: per PRD §M; uses mock-data entities A, B, C
+
+## Agent states per route
+- /<route>: low_confidence, awaiting_review
+
+## Edge-case states per route
+- /<route>: ?state=empty, ?state=stress
+
+## Drift items to reconcile (if any)
+- PRD §N → conform MP to PRD: <specific change>
+
+## Assumptions (defaulted, no user input)
+- <question> → defaulted to <choice>
+```
+
+If `phase1-scope.md` ends up empty (every route gets nothing changed),
+Stage 3 effectively no-ops — proceed directly to Checkpoint #2 prompt.
+
+---
+
+# STAGE 3 — Add scaffolding (~2-5 min, parallel-liberal, scope-proportional)
+
+## Beat 3.1 — Plan the parallel batch
+
+Default: one agent per route in `phase1-scope.md` that has changes.
+
+**Split-into-sub-agents rule (parallel-liberal):** if a single route's
+scope has **3+ independent items** (e.g. add widget A + wire agent
+state B + add ?state=empty branch + drift fix C), split into per-item
+sub-agents. Each sub-agent owns ONE change. The main thread then
+sequentially merges sub-agent outputs into the route file (each
+sub-agent's diff applied as an Edit).
+
+Use when:
+- Route has 3+ independent additions
+- Items don't share state/structure (won't conflict on merge)
+- Cornerstone or thick route where one-agent-does-all would push the
+  LOC cap
+
+Don't split when:
+- Scope is 1-2 items
+- Items depend on each other (e.g. a widget that uses a new agent
+  state — should be one agent)
+
+Spawn the batch in ONE tool-call group. Wall-clock = slowest agent,
+not sum. Compute budget is liberal; don't constrain agent count to
+save it.
+
+## Beat 3.2 — Per-route Stage 3 agent prompt template
+
+```
+You are doing the STRUCTURAL SCAFFOLDING work for one Next.js route
+in Phase 1 of /dress-up. Your job is ADDITIVE: add scaffolding to the
+existing Stage 1 file (raw Tailwind). Phase 2 (Stage 4) will translate
+visuals into peer-design-system primitives later — that's NOT your job.
+
+## Target file
+{NEXT_FILE_PATH}
+
+## Mode
+{MODIFY | CREATE | MERGE_ITEM}
+- MODIFY: edit Stage 1 file in place (Edit tool, additive only)
+- CREATE: write new file at {NEXT_FILE_PATH} (Write tool)
+- MERGE_ITEM: edit Stage 1 file to add ONE specific item (sub-agent
+  from split)
+
+## Inputs
+
+### Stage 1 file (your starting point if MODIFY/MERGE_ITEM)
+Read {NEXT_FILE_PATH} first to see what's already there.
+
+### Scope (what to add for this agent)
+{SCOPE_EXCERPT_FROM_PHASE1_SCOPE}
+
+### Relevant PRD section excerpts (verbatim, with citations)
+{PRD_EXCERPTS_FOR_THIS_ROUTE_AND_THESE_ITEMS}
+
+### Persona context
+{PERSONA_FROM_PRD}
+
+### Mock-data fields to use
+{MOCK_DATA_NOTES — which entities/types to reference; do not
+invent new fields, do not rename existing ones}
+
+### Agent-state patterns to apply (if scope includes states)
+Reference: ~/.claude/skills/agent-states/SKILL.md
+{NAMED_PATTERNS_FOR_SCOPE — e.g., "low_confidence → inline underline
++ side panel with confidence chip and source link"}
+
+### Edge-case states to add (if scope includes states)
+Pattern: `useSearchParams().get('state')` → switch on value. Implement
+the requested `?state=NAME` branches.
+
+## Phase 1 style vocabulary (the ONLY raw Tailwind classes you may use)
+
+- Page background: bg-white text-zinc-900
+- Cards: bg-white border border-zinc-200 rounded-lg p-4
+- Card hover: hover:bg-zinc-50 transition-colors
+- Headings h1: text-zinc-900 font-semibold text-2xl tracking-tight
+- Headings h2: text-zinc-900 font-semibold text-lg
+- Body: text-zinc-700 text-sm leading-relaxed
+- Muted: text-zinc-500 text-xs
+- Banners info: bg-blue-50 border border-blue-200 text-blue-800
+  rounded-md p-3 text-sm
+- Banners warning: bg-amber-50 border border-amber-200 text-amber-800
+  rounded-md p-3 text-sm
+- Banners critical: bg-red-50 border border-red-200 text-red-800
+  rounded-md p-3 text-sm
+- Pills: inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+  bg-zinc-100 text-zinc-700 text-xs font-medium
+- Buttons primary: bg-zinc-900 text-white rounded-md px-3 py-1.5
+  text-sm font-medium hover:bg-zinc-800
+- Buttons secondary: border border-zinc-200 text-zinc-700 rounded-md
+  px-3 py-1.5 text-sm font-medium hover:bg-zinc-50
+- Form inputs: border border-zinc-200 rounded-md px-3 py-2 text-sm
+  w-full focus:outline-none focus:border-zinc-400
+
+NO DS primitives (`<Heading>`, `<Stack>`, etc.). Stage 4's job.
+NO new colors, fonts, or chart libs.
+
+## Hard rules
+
+- Add 'use client'; if any hook is used.
+- Wrap default export in <Suspense fallback={null}> if you call
+  useSearchParams() directly or via a child.
+- Preserve all Stage 1 routing translations.
+- Use named entities from @/lib/mock-data verbatim. Do not invent.
+- Domain vocabulary, not lorem ipsum. But ALSO not hyper-realistic.
+  Two sentences of decent realistic copy beats four polished sentences.
+  Volume > polish.
+- New mock-data rows: 3-5 fields each, not 15-line paragraphs.
+- Labels and chip text: 1-3 words.
+- Banner copy: one structured sentence.
+- Voice: no em dashes in your prose (em dashes inside string literals
+  copied from PRD/mock-data are fine). No "you" unless MP source
+  already uses second person. No AI slop, no filler.
+
+## Caps
+
+- MODIFY/MERGE_ITEM: max 200 LOC of NEW code per route.
+- CREATE: max 350 LOC for a new route file.
+- Time: 4 minutes hard cap. If you'd exceed, stop and return
+  "needs sub-split" or "scope too broad" + which items you couldn't
+  cover.
+
+## Output
+
+- MODIFY/MERGE_ITEM: use Edit tool. Report which items you added
+  (one line per item).
+- CREATE: use Write tool. Report LOC + items covered (one paragraph).
+- Don't restructure the route's existing layout. Add to it.
+```
+
+## Beat 3.3 — Merge sub-agent outputs (if Beat 3.1 split)
+
+For each route that was split, the sub-agents wrote PATCH descriptions
+or used Edit independently against the same file. If multiple
+sub-agents touched the same file, the main thread runs them in
+sequence (parallel writes risk Edit conflicts). Or — simpler — each
+sub-agent writes its addition to a NAMED sub-component file
+(`src/components/screens/<route>/<ItemName>.tsx`), then a small main-
+thread Edit on the route page imports + renders the new sub-components.
+
+Pick the approach per scope. For simple additions (one widget appended
+to a stack), sequential Edits are fine. For larger items (a whole new
+modal), sub-component files keep things clean.
+
+## Beat 3.4 — Build + reload dev server + checkpoint (~30s)
+
+1. `cd <out> && npm run build` (audit still disabled).
+2. If build fails: surface first 30 lines verbatim, stop.
+3. Dev server should still be running (Stage 1 started it). Next.js
+   HMR picks up the new files. Confirm `lsof -ti:3053` returns the PID
+   from `stage1-done.json`. Restart if missing.
+4. Write `<out>/.dress-up/phase1-done.json` with timing, scope applied,
+   files changed, dev port.
+5. Print to user:
+
+```
+Stage 3 complete in <wall-clock>.
+Scaffolding added:
+  - <X widgets, Y agent states, Z edge-case branches, K new routes>
+  - <list specific items>
+
+Dev server: http://localhost:3053 (reload to see changes)
+
+→ Open it. Click through. Make any manual edits to src/app/ if you
+  want — they'll be preserved through Stage 4.
+
+When you're ready for the design-system translation (Stage 4), run:
+  /dress-up <mp-url> --finish [--notes <path>]
+```
+
+**STOP.** Do not auto-run Stage 4.
+
+---
+
+# STAGE 4 — DS translation (~5-7 min, parallel-liberal)
+
+## Beat 4.1 — Verify checkpoint + re-enable audit + build DS manifest (~30s)
+
+1. Verify `<out>/.dress-up/phase1-done.json` exists. If not, error:
+   "no Phase 1 checkpoint; run --analyze first."
+2. Re-enable audit: rename `<out>/package.json`
+   `prebuild:audit-disabled` → `prebuild`.
+3. Read user's `--notes` / `--notes-text` if provided. Save to
+   `<out>/.dress-up/phase2-notes.md`.
+4. Build DS manifest at `<out>/.dress-up/ds-manifest.md`. Required
+   sections (per-primitive tone enums are critical — agents regress
+   on these):
+
+```markdown
+## Per-primitive tone enums (READ THESE BEFORE USING tone= PROPS)
+
+Each primitive's tone union is DIFFERENT. NOT interchangeable:
+
+- <Heading tone>: "ink" | "muted"
+- <Body tone>: "ink" | "muted" | "faint"
+- <MetaText tone>: "default" | "faint" | "faintest" | "ink"  ← NO "muted"
+- <MetaLabel tone>: "default" | "muted"
+- <Pill variant>: "outlined" | "filled" | "accent" | "ghost"
+
+When in doubt, drop the tone= prop and rely on the primitive's
+default tone. Or use a Tailwind utility class for tone (text-faint,
+text-muted, text-ink).
+```
+
+Plus the standard manifest sections (typography, layout, UI primitives,
+patterns, charts, color tokens, animation utilities, spacing buckets).
+
+## Beat 4.2 — Parallel DS translation (~4-5 min, parallel-liberal)
+
+One agent per route file in `<out>/src/app/`. Spawn in one parallel
+tool-call batch.
+
+**Cornerstone-split rule applies here too**: if a route's Stage 3
+output > 800 LOC, split into shell + sub-component agents. Same
+pattern as Stage 1's split. Don't artificially cap agent count.
+
+### Per-route Stage 4 agent prompt template
+
+```
+You are translating ONE finished Next.js page from raw Tailwind into
+peer-design-system primitives. Stage 3 finalized structure / content /
+features. Your job is VISUAL TRANSLATION ONLY.
+
+## Target file (edit in place)
+{NEXT_FILE_PATH}
+
+## Source to translate
+Read the existing file at {NEXT_FILE_PATH} — that's the Stage 3 finished
+structure. Translate to use peer-DS primitives without changing content,
+structure, or features.
+
+## DS manifest (the only primitives you may import)
+
+{DS_MANIFEST_CONTENT}
+
+## Notes from user (if any)
+
+{PHASE_2_NOTES_FOR_THIS_ROUTE_IF_ANY}
+
+## Hard contract (every rule applies)
+
+- No new color values. All colors via DS tokens applied as Tailwind
+  utility classes (`text-ink`, `bg-coral`, `border-hairline-strong`,
+  `bg-soft`, `text-muted`). NOT as `tone=` props unless the primitive's
+  tone union accepts that value (see manifest — MetaText does NOT
+  accept "muted").
+- No hex codes in className or style. No arbitrary Tailwind like
+  `[#abc]` or `text-[Npx]`.
+- No new fonts. No `next/font` imports (layout.tsx wires them).
+- No external UI kits (radix, shadcn, headlessui, mantine, react-aria).
+- No new chart libraries. Use DS BarChart / DonutChart / LineChart /
+  Sparkline only.
+- No inline `style={{...}}` except one-off positioning (top/left/transform).
+- No raw <h1>-<h6>. Use <Heading size="display|h1|h2|h3|h4">.
+- No raw <p className=...>. Use <Body size="lead|body|small">.
+- No raw `flex flex-col gap-N`. Use <Stack gap="...">.
+- No raw `flex items-* gap-N`. Use <Cluster gap="...">.
+- No <Button href>. Use <LinkButton href>.
+- Domain vocabulary as written in Stage 3 — DO NOT rewrite copy.
+
+## Motion rules
+
+- Page entrance stagger: top-level sections get className "anim-fade-in",
+  "anim-fade-in-1", "anim-fade-in-2", ... by depth.
+- Card / Button / TableRow primitives carry hover transitions built-in.
+  Don't override.
+- DO NOT import framer-motion in NEW code. If the Stage 3 file imports
+  it (preserved from MP), strip it now — replace `motion.div` with
+  regular `<div>` + `anim-fade-in*` classes.
+- No inline `style={{ animation: ... }}` or `style={{ transition: ... }}`.
+- No new @keyframes.
+
+## Voice rules (preserve, do not rewrite)
+
+- Stage 3 copy is final. Do not "improve" it. Only swap primitives.
+- If you spot an em dash in Stage 3 prose (not inside a string literal
+  copied from PRD/mock-data), you may strip it. Otherwise hands off.
+
+## Next 16 Suspense rule (CRITICAL — build fails without this)
+
+If your page calls useSearchParams() (directly or via a child), the
+default export MUST wrap in <Suspense fallback={null}>:
+
+  function PageInner() { /* all the body */ }
+  export default function Page() {
+    return <Suspense fallback={null}><PageInner /></Suspense>;
+  }
+
+Stage 1 should have done this already. Verify it survived translation.
+
+## Known DS quirks (must be applied)
+
+### Table generic constraint
+<Table<T>> requires T extends Record<string, unknown>. Domain types from
+@/lib/types don't satisfy this. Cast at the use site:
+
+  const columns: TableColumn<MyType & Record<string, unknown>>[] = [...];
+  <Table<MyType & Record<string, unknown>>
+    columns={columns}
+    rows={rows as (MyType & Record<string, unknown>)[]}
+    rowKey={(r) => r.id}
+  />
+
+### Type-import rule
+NEVER use ReturnType<typeof useTaskStore>['x'][string] to type panel
+props. The zustand selector type doesn't infer through index access
+cleanly and TS check fails. Import named types from @/lib/types directly.
+
+### Fixed-width sidebars
+DS audit fails w-[400px] (or any w-[N≥300px]). Use
+w-[clamp(320px,28vw,420px)] or <SplitFrame>.
+
+### No framer-motion in NEW code
+Covered above. Strip from Stage 3 file if present.
+
+## Output contract
+
+- Single self-contained TSX file at {NEXT_FILE_PATH} (Edit in place).
+- LOC cap: shell pages 200-400, sub-components 150-300, single-agent
+  pages 300-500. Split into shell + sub-components under
+  src/components/screens/<route>/ if > 600 LOC after translation.
+- DO NOT change structure, content, copy, or features. ONLY swap raw
+  Tailwind for DS primitives.
+- Imports only from: react, next/{navigation,link},
+  @/components/{ui,layout,charts,patterns,typography},
+  @/lib/{store,types,mock-data,cn}, lucide-react, clsx,
+  react-hot-toast, zustand.
+
+Report at end: which primitives you swapped (one line summary).
+```
+
+## Beat 4.3 — Build + audit + cleanup + final build (~1-2 min)
+
+1. `cd <out> && npm run build` (audit runs via prebuild hook).
+2. If audit fails with mechanical violations (text-[Npx], raw flex
+   gap-N, MetaText tone="muted", etc.): spawn ONE focused cleanup
+   agent per offending file in parallel. Scope: "fix these listed
+   violations, change nothing else." Cap: one round. (This is the one
+   place auto-fix is allowed — deterministic mechanical fixes.)
+3. Re-run `npm run build` once after cleanup. If still failing, stop
+   and surface audit output verbatim.
+4. If type errors: surface first 30 lines verbatim. Do NOT auto-fix
+   in a loop. Common roots: missing Suspense wrapper post-translation,
+   Table generic cast forgotten, type-import regression.
+
+## Beat 4.4 — Final report + dev server (~10s)
+
+Write `<out>/DRESS-UP-REPORT.md`:
+
+- MP source URL + commit SHA
+- PRD path (if provided)
+- Notes path (if provided)
+- Stage 1 timing + route map (verbatim ports)
+- Phase 1 analysis summary (link to phase1-analysis.md)
+- Phase 1 scope (link to phase1-scope.md)
+- Stage 3 timing + scaffolding added per route
+- Stage 4 timing per agent + cleanup count
+- **Assumptions section** — every defaulted question across all stages
+- Build status, audit violations remaining (should be 0)
+- npm run dev command + port
+
+Ensure dev server is running on 3053 (restart if PID dead). Print to user:
+
+```
+Done in <total wall-clock>.
+
+Report: <out>/DRESS-UP-REPORT.md
+Dev server: http://localhost:3053
+```
+
+**STOP.** Do not offer to open files, deploy, or take next steps.
+
+---
+
+## Stop conditions
+
+- After Stage 1 Beat 1.4: stop, wait for `--analyze` invocation.
+- After Stage 3 Beat 3.4: stop, wait for `--finish` invocation.
+- After Stage 4 Beat 4.4: end of pipeline. Stop entirely.
 
 ## Out of scope
 
 - Synthesizing a design system from scratch (use /build-hifi for
   greenfield).
-- Inverting the direction (peer-DS → Magic Patterns).
-- Auto-fixing build errors in a retry loop.
-- Migrating an existing MP project in-place (always goes into a
-  fresh DS clone).
-- Sources that aren't React (Vue, Svelte, plain HTML).
+- Inverting direction (peer-DS → Magic Patterns).
+- Auto-fix loops beyond Stage 4's one round of mechanical cleanup.
+- In-place migration of an existing MP project (always fresh DS clone).
+- Sources that aren't React.
 - Authentication, user accounts, multi-tenancy, real APIs.
+- A Stage 5 (e.g., automated A/B variants).
+- Auto-invoking /agent-states or /ux-review as sub-skills. Stage 2
+  references the patterns manually; user can run /ux-review
+  separately after Stage 4 if they want.
+- Updating the PRD if MP has diverged (that's /code-ready-prd's job).
