@@ -890,6 +890,19 @@ to re-read the PRD.
 guess. If the scope excerpt is ambiguous on something, treat that as
 a scope bug and surface it in your output instead of inventing.
 
+### Pattern reference (only if scope item names one)
+If your scope item contains a `pattern reference: <file>:<lines>` entry,
+READ that file region BEFORE writing any new component code. Mimic the
+visual approach: className conventions, lucide icon usage, layout
+structure, spacing primitives. The pattern reference is there because
+inventing-from-scratch produces drift; the codebase already has an
+established aesthetic and you should match it.
+
+For NEW component files (no existing file content to anchor to), the
+pattern reference IS your anchor. Don't invent if a pattern exists.
+The scope's "behavior" line describes what's different (the delta);
+everything not in the delta should match the reference.
+
 ### Agent-state patterns (only if scope includes a state item)
 Reference: ~/.claude/skills/agent-states/SKILL.md
 The scope item will name the pattern by name (e.g., "low_confidence");
