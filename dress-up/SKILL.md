@@ -93,8 +93,9 @@ time.
 
 1. **Answer the OG brief 1:1.** The brief (PRD §intro + persona +
    JTBD, or the --brief notes file) is what the exercise gets graded
-   on. Tier 1 = brief asks MP doesn't address.
-2. **Feel / flow / IA / aesthetic thinking.** Beyond brief.
+   on. PRD-cited findings = brief asks MP doesn't address.
+2. **Feel / flow / IA / aesthetic thinking.** Beyond brief — these
+   land in the Structural category at Beat 2.3.
 3. **Volume + decent content quality.** Enough realistic content to
    read as a product; NOT hyper-realistic. Don't burn tokens
    perfecting copy.
@@ -410,7 +411,7 @@ When you're ready for analysis + scaffolding (Stage 2-3), run:
 # STAGE 2 — Analysis + user dialog (~7-9 min for a comprehensive PRD; ~4-5 min for a thin one)
 
 Wall-clock observed on the Peer AI Source Conflict Resolution exercise
-(20-section PRD + 7-flow walkthrough + 5 Tier 1 + 4 Tier 2 + 6 drift):
+(20-section PRD + 7-flow walkthrough + ~20 findings across 5 categories):
 - Beat 2.2 parallel agents: ~3.5 min
 - Beat 2.3 synthesis: ~3 min
 - Beat 2.5 scope contract: ~3 min
@@ -463,7 +464,14 @@ browser).
 ## Inputs to read
 
 - PRD: {PRD_PATH}
-- Brief notes (if present): {BRIEF_PATH}
+- Brief notes (if present): {BRIEF_PATH}. The brief is the user's
+  product-thinking steering. Treat it as PRD-cited candidate signal:
+  anything the brief explicitly asks for (e.g., "Priya works across
+  3-4 docs — propose cross-doc surfaces") gets surfaced in your audit
+  with the same weight as a PRD-cited gap. The PRD is the contract;
+  the brief is what the user wants beyond the contract. If the brief
+  is absent, skip this consideration; don't invent product-thinking
+  proposals on your own (that's not your role).
 - Lofi concepts.json (if present): {LOFI_CONCEPTS_PATH}
 - MP-derived source under {OUT_ROOT}/src/:
   - src/app/**/*.tsx (routes)
@@ -479,7 +487,7 @@ Write {OUT_ROOT}/.dress-up/spec-audit.md with EXACTLY this structure:
 ## Brief-fidelity scan
 Enumerate PRD §intro + persona + JTBD core asks verbatim with section
 citations. For each, mark yes/partial/no — does the ported MP address
-it? List "no" items first; these are Tier 1 candidates.
+it? List "no" items first; these are PRD-cited gaps the synthesis step will surface as default-on at the dialog.
 
 ## Surface inventory
 PRD §10 (UI Surface Inventory) vs what {OUT_ROOT}/src/app/ ships.
@@ -501,8 +509,10 @@ the 13 patterns from ~/.claude/skills/agent-states/SKILL.md:
 ## Edge case coverage
 PRD §21 categories × routes. Table:
 | Route | empty | error | stress | permission | data | temporal |
-Mark present | missing | N/A per cell. Bias: missing edge cases are
-Tier 2 unless they break the brief's success criteria.
+Mark present | missing | N/A per cell. Note: missing edge cases land
+in the Workflow or PRD-cited category at synthesis depending on
+whether the PRD §21 row is explicit and whether the missing case
+breaks a success criterion.
 
 ## PRD-MP drift
 Places PRD and MP code DISAGREE (not just where MP omits). Per drift:
@@ -622,9 +632,55 @@ Friction observed in 2+ flows. Likely systemic. E.g.:
 Read both agent outputs:
 - {OUT_ROOT}/.dress-up/spec-audit.md
 - {OUT_ROOT}/.dress-up/walkthrough-friction.md
+- {OUT_ROOT}/.dress-up/bootstrap-done.json (for `brief_path`, if a brief notes file was passed at Stage 0)
 
-If either file is missing or marked errored, STOP and surface to user.
-Do not synthesize from one alone — that defeats the dual-lens design.
+If either agent output is missing or marked errored, STOP and surface
+to user. Do not synthesize from one alone — that defeats the dual-lens
+design.
+
+### Grouping by category, not tier (load-bearing rule)
+
+Prior versions of this skill used Tier 1 / Tier 2 / Tier 3 priority
+labels. Don't. Tiering forces ONE judgment call about "how important"
+each finding is BEFORE the user sees it, and that judgment biased
+toward small surgical wins and buried structural findings under
+generic "Tier 2 with 13 items." The user can't pick what they can't
+see.
+
+Instead, classify every finding into ONE of FIVE categories. The
+category communicates WHAT the finding is (its type). The default at
+the dialog communicates WHETHER it's included by default. WHAT and
+WHETHER are different signals; don't conflate them with a single
+priority number.
+
+### The five categories
+
+| Category | Default at dialog | What goes here |
+|---|---|---|
+| **PRD-cited** | All checked | Findings where the PRD explicitly asks for X (or describes X as part of the spec inventory) and MP doesn't have it. Agent A's primary output. |
+| **Structural / IA / new surfaces** | All checked | Findings that imply ANY of: a new route, IA reorganization (surfaces merged / split / role-changed), a new top-level surface or modal class, a workflow capability the existing UI doesn't have, or a permission-model shift. |
+| **Workflow** | All checked | Findings that improve cross-flow behavior: mode switching, batch operations, categorization affecting downstream filters, prediction surfaces, review queues, audit-trail-on-actions. |
+| **Polish** | None checked | Localized UX fixes: missing affordance on one element, confusing label, unclear state visualization, slow-path within a single flow, micro-defensibility add. |
+| **Drift** | Single-select reconciliation | PRD vs MP disagreements, not gaps. |
+
+### Classification rules (apply to every finding deterministically)
+
+1. **PRD-cited**: the finding cites a specific PRD section AND describes a gap (PRD says X; MP doesn't have X). Agent A's typical output.
+2. **Structural**: at least one of: implies a new route; implies surface reorganization; implies a new modal/overlay class; enables a workflow capability the existing UI doesn't support; changes who sees what (permission shift). Most of Agent B's CROSS-FLOW patterns land here.
+3. **Workflow**: improves how the persona moves across surfaces. Mode switching, batch operations, categorization, prediction, review queues, audit surfacing on destructive actions. Often from B's cross-flow patterns.
+4. **Polish**: localized UX fix, single element/flow scope, no surface or behavior change at the IA level.
+5. **Drift**: PRD says X, MP shows Y, but both work. Not a gap, a disagreement.
+
+A finding can match multiple categories. Assign to the MOST IMPACTFUL one in this priority: **Structural > Workflow > PRD-cited > Polish > Drift**. (PRD-cited beats Polish but ties with Structural — if a PRD-cited gap is ALSO Structural, classify as Structural; this prevents structural items from being buried just because the PRD also mentions them.)
+
+### Scope tag on every finding (S / M / L)
+
+Include a scope estimate per finding:
+- **S** — one widget on existing route, ~30-60 LOC of changes
+- **M** — new component or behavior addition, ~100-200 LOC across 1-2 files
+- **L** — new route + new component + new mock-data, ~200-400 LOC across 3+ files
+
+The dialog uses scope tags to communicate cost without re-introducing tiers. Default-on categories show `[L]` items so the user can opt out if cost is too high.
 
 Write {OUT_ROOT}/.dress-up/phase1-analysis.md:
 
@@ -635,40 +691,39 @@ Write {OUT_ROOT}/.dress-up/phase1-analysis.md:
 - Agent A spec audit: spec-audit.md ({LOC} LOC, ran in {DURATION})
 - Agent B persona walkthrough: walkthrough-friction.md ({LOC} LOC,
   {N} screenshots, ran in {DURATION})
+- Brief notes (if present): {BRIEF_PATH}
 
 ## Merged findings
 
-| ID | Source | Finding | PRD § | Tier |
-|----|--------|---------|-------|------|
-| F-1 | both | <description that fuses A's spec finding with B's friction observation> | §17 | 1 |
-| F-2 | A | <spec-only finding> | §10 | 2 |
-| F-3 | B | <friction-only finding> | — | 2 |
-| D-1 | A | <drift item> | §12 | (drift) |
+| ID | Source | Category | Scope | Finding | PRD § |
+|----|--------|----------|-------|---------|-------|
+| F-1 | both | PRD-cited | M | <description that fuses A's spec finding with B's friction observation> | §17 |
+| F-2 | A | PRD-cited | M | <spec-only finding> | §10 |
+| F-14 | B | Structural | L | <new-surface finding> | §10, §12 |
+| F-11 | B | Structural | M | <IA-level finding> | §10 |
+| F-8 | B | Workflow | S | <workflow finding> | §8, §12 |
+| F-9 | A | Polish | S | <small UX finding> | §5 |
+| D-1 | A | Drift | — | <drift item> | §20 |
 ...
 
-## Tiering rules used
+## Default-include picks (by category)
 
-- **Tier 1** = brief-breaking (item blocks the PRD's persona success
-  criteria) OR critical friction (dead-end UI, broken role gate,
-  no path forward).
-- **Tier 2** = clear improvement (PRD section addressed shallowly,
-  usability friction observed but not blocking).
-- **Tier 3** = polish, not in PRD, not blocking. Default skip.
+PRD-cited (all default-on):
+- F-1 [M]: <one-line>
+- F-2 [M]: <one-line>
 
-## Recommendation summary
+Structural / IA / new surfaces (all default-on):
+- F-14 [L]: <one-line>
+- F-11 [M]: <one-line>
 
-Tier 1 (default-do):
-- F-1: <one-line>
-- F-4: <one-line>
-...
+Workflow (all default-on):
+- F-8 [S]: <one-line>
 
-Tier 2 (opt-in):
-- F-2: <one-line>
-- F-5: <one-line>
-...
+Polish (default off, opt-in):
+- F-9 [S]: <one-line>
 
-Tier 3 (skip):
-- F-7: <one-line>
+Drift (single-select reconciliation):
+- D-1 [—]: <one-line>
 ```
 
 ### Dedup rules
@@ -690,30 +745,52 @@ Don't collapse:
 
 ## Beat 2.4 — User dialog (~1 min, AskUserQuestion)
 
-Cap 4 questions. Order by Tier:
+One multiSelect question PER category that has findings (skip empty
+categories). Plus one single-select for Drift. Cap 4 questions total —
+if more than 4 categories have content, surface PRD-cited + Structural +
+Workflow + Drift as the four (Polish defaults to none-included if not
+asked).
 
-1. **Tier 1 confirmation** (only if Tier 1 has >2 items):
-   multiSelect — "These items block the brief. Default-do; uncheck
-   to skip."
-2. **Drift reconciliation** (only if D-N items present):
-   single-select — "PRD and MP disagree in N places. Default = keep
-   MP's version. Options: keep MP / conform to PRD / case-by-case."
-3. **Tier 2 opt-in** (only if Tier 2 non-empty):
-   multiSelect — "Optional improvements. Default = none."
-4. **New routes** (only if missing routes list non-empty):
-   multiSelect — "Routes the PRD declares but MP doesn't ship.
-   Default = none."
+Question shape (each question is a multiSelect with up to 4 options;
+findings get bundled by file or visual theme when a category has > 4):
 
-Skip a bucket if analysis shows no real decision in it. Always
-include "Skip / use default" per question.
+```
+Q1 "PRD-cited items (default include, uncheck to skip)" — multiSelect, default ALL checked
+  - F-1 [M]: <one-line>
+  - F-2 [M]: <one-line>
+  - F-3 [M]: <one-line>
+  - F-4 [M]: <one-line>
+
+Q2 "Structural improvements (new surfaces / IA / workflow) — default include, uncheck to skip" — multiSelect, default ALL checked
+  - F-14 [L]: <one-line; the [L] tag flags cost>
+  - F-11 [M]: <one-line>
+  - F-8 [S]: <one-line>
+
+Q3 "Polish (opt-in)" — multiSelect, default NONE checked
+  - F-9 [S]: <one-line>
+  - F-13 [S]: <one-line>
+  - F-17 + F-18 [S]: <bundled label tweaks one-line>
+  - F-12 [S]: <one-line>
+
+Q4 "Drift reconciliation" — single-select
+  - Keep MP everywhere
+  - Conform D-3 only
+  - Conform all
+```
+
+If a category has more than 4 findings, bundle by visual theme (e.g.,
+"F-17 + F-18: chip + badge label clarity") OR note in the question
+text that additional related findings can be hand-added to
+phase1-scope.md. Never silently skip findings.
 
 **Default-with-flag on skip:** every defaulted question gets the
 default applied AND logged to the Assumptions section of
 phase1-scope.md.
 
-**Default behavior if user skips everything:** implement Tier 1, skip
-Tier 2/3, keep MP's drift versions. Fast path that still answers the
-brief.
+**Default behavior if user skips everything:** implement PRD-cited +
+Structural + Workflow (all default-on); skip Polish; keep MP's drift
+versions. This is the "intent" baseline — answers the brief, includes
+high-leverage product moves, no polish noise.
 
 ## Beat 2.5 — Write phase1-scope.md (Stage 3 input contract)
 
@@ -817,11 +894,11 @@ For each ?state=NAME branch:
   invisible" failure. Default to "inline reference: none — {reason}"
   when the entity is audit-log-only or referenced only by other
   entities, never to silently omit the field.
-- Tier 2 items the user opted INTO appear. Opted-out items do NOT
-  appear. The Assumptions section logs everything skipped + why.
-- If `phase1-scope.md` ends up empty (no Tier 1 items, no opt-ins),
-  print to user: "No structural changes selected. Stage 3 will no-op;
-  jump to Stage 4 with `--finish`."
+- Findings the user opted INTO appear. Opted-out items do NOT appear.
+  The Assumptions section logs everything skipped + why.
+- If `phase1-scope.md` ends up empty (no findings opted into across
+  any category), print to user: "No structural changes selected.
+  Stage 3 will no-op; jump to Stage 4 with `--finish`."
 
 ### Stop point
 
