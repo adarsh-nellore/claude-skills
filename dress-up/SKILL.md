@@ -770,6 +770,19 @@ For each entity to add or extend:
     ...
   }
   ```
+- inline reference (REQUIRED when the entity has a unique chipId / id
+  that needs to render in a route's prose to be visible): name the
+  target route file + paragraph context + the exact JSX snippet to
+  insert. Example:
+  ```
+  inline reference: src/app/submissions/[id]/sections/[sid]/page.tsx,
+    in the sec-5.3.2 prose block, add:
+    <CitationChip chipId="chip-pfs-updated" sectionId="sec-5.3.2" />
+    positioned in a sentence about updated AE rates.
+  ```
+  If the entity doesn't surface inline (e.g., it's an audit-log-only
+  historical conflict, or a SourceDocument referenced only by other
+  entities), write `inline reference: none — entity surfaces via {how}`.
 
 ## Drift items to reconcile
 
@@ -796,6 +809,14 @@ For each ?state=NAME branch:
 - Every "target file" is an ABSOLUTE path (no `<out>` placeholders).
 - Every Mock-data entry includes a TypeScript shape block (so a Stage
   3 agent doesn't have to invent field names).
+- Every Mock-data entry that adds an entity with a unique chipId (or
+  any other id consumed by inline JSX in a route) includes the
+  `inline reference` field naming the target route file + insertion
+  context. Skipping this means the new entity sits in memory but never
+  renders, and the smoke test will catch the gap as a "built but
+  invisible" failure. Default to "inline reference: none — {reason}"
+  when the entity is audit-log-only or referenced only by other
+  entities, never to silently omit the field.
 - Tier 2 items the user opted INTO appear. Opted-out items do NOT
   appear. The Assumptions section logs everything skipped + why.
 - If `phase1-scope.md` ends up empty (no Tier 1 items, no opt-ins),
