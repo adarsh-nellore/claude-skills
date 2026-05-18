@@ -226,7 +226,7 @@ Optional `--notes` / `--notes-text`: user's feedback after Checkpoint
 
 ---
 
-# STAGE 1 — Routing-only port (~2-3 min, parallel agents)
+# STAGE 1 — Routing-only port (~10-15s with codemod, ~2-3 min with agent fallback)
 
 ## Beat 1.1 — Inventory MP + dep grep (~30s, main thread)
 
@@ -262,45 +262,70 @@ Common additions: `zustand`, `react-hot-toast`, `tailwind-merge`,
 
 Save inventory to `<out>/.dress-up/inventory.json`.
 
-## Beat 1.2 — Deterministic file copies + install (~1 min, no LLM)
+## Beat 1.2 — Run the mp-to-next codemod (~5s, no LLM)
+
+**This is the default path.** A deterministic Node script does every
+mechanical transformation Stage 1 needs:
 
 ```bash
-cp <mp>/path/to/types.ts <out>/src/lib/types.ts
-{ echo "'use client';"; echo ""; cat <mp>/path/to/store.ts; } > <out>/src/lib/store.ts
-# If MP inlines mock data in store.ts, also copy it to mock-data.ts as a clone
-{ echo "'use client';"; echo ""; cat <mp>/path/to/store.ts; } > <out>/src/lib/mock-data.ts
-cp <mp>/path/to/lib/cn.ts <out>/src/lib/cn.ts  # if present
+node ~/.claude/skills/dress-up/bin/mp-to-next.mjs <mp-clone-root> <out-root> --slug <slug>
 ```
 
-Update `<out>/package.json` with detected deps. Run `npm install` ONCE
-here (so Stage 1 builds work).
+What it does:
 
-Patch `<out>/src/app/layout.tsx`:
-- Add `<Toaster />` from `react-hot-toast` inside `<body>` if MP uses it.
-- Update `title` / `description` to sensible MP-derived names.
+- Parses MP `src/App.tsx` for the `<Route>` declarations and builds
+  the Next.js App Router file map (`/login` → `src/app/login/page.tsx`,
+  `/foo/:id` → `src/app/foo/[id]/page.tsx`, etc.).
+- Handles `<Route path="/" element={<Navigate to="..."/>}>` by writing
+  a `src/app/page.tsx` with `redirect(...)`. Skips `path="*"` fallback
+  Navigate entries (Next.js handles 404 via `not-found.tsx`).
+- For every page + component file: rewrites `react-router-dom` imports
+  to `next/navigation` + `next/link`, renames `useNavigate` →
+  `useRouter` (call site too, not just import), `navigate(x)` →
+  `router.push(x)`, `<Link to=>` → `<Link href=>`, adds typed params
+  for `useParams<{x: string}>()`, rewrites `../AppContext` →
+  `@/lib/store`, `../mockData` → `@/lib/mock-data`, `../types` →
+  `@/lib/types`, `../components/Foo` → `@/components/peer/Foo`.
+- Detects hook usage and prepends `'use client';`. Adds a TODO comment
+  for `useSearchParams` so the porter can wrap in `<Suspense>` manually.
+- For PAGE files only: converts named `export const Foo: React.FC =`
+  to `export default function Foo(...)`. Components keep their named
+  exports.
+- Patches `<out>/src/app/layout.tsx` to wrap `{children}` in
+  `<AppProvider>` from `@/lib/store` and updates metadata title to the
+  slug.
+- Patches `<out>/package.json`: adds MP deps that aren't already there
+  (lucide-react, framer-motion, react-hot-toast, zustand, etc.) and
+  renames `prebuild` → `prebuild:audit-disabled` so Stages 1-3 builds
+  don't run the composition audit.
+- Writes a JSON report to `<out>/.dress-up/port-report.json`.
 
-## Beat 1.3 — Per-route literal-port agents (~1-2 min parallel)
+The codemod is idempotent: rerunning it overwrites pages, replaces the
+DS mock-data stub, and dedup-appends MP types under a marker. Safe to
+rerun if the first attempt fails partway.
 
-Spawn one agent per route in ONE parallel batch.
+After the codemod, run `npm install` once. Total Beat 1.2 wall-clock
+on a typical MP: ~5-10 seconds (sub-second codemod + ~5-10 seconds for
+install).
 
-### Cornerstone-split rule (parallel-liberal)
+### Fallback: per-route literal-port agents (~2-3 min parallel)
 
-If a route's total source LOC (page + imported MP components) > 800,
-SPLIT into shell + sub-component agents in parallel:
+Use ONLY when the codemod can't handle the MP shape:
 
-- ONE shell agent: writes `src/app/<route>/page.tsx` with TopNav,
-  layout scaffolding, main content slot, and a modal-overlay dispatcher
-  that conditionally renders `?modal=NAME` matches.
-- N sub-component agents: each writes ONE
-  `src/components/screens/<route>/<Name>.tsx` for one modal or one
-  heavy sub-panel (e.g. EvidenceModal.tsx, GapsModal.tsx).
-- Shell imports the sub-components.
+- MP uses nested `<Route>` with `<Outlet>` (codemod doesn't translate
+  to `?modal=NAME` yet — needs LLM judgment).
+- MP uses `react-query` / `swr` / `zustand` with non-trivial setup
+  that needs adjustment.
+- MP isn't using the Magic Patterns Vite template layout (no
+  `src/App.tsx`, no `src/pages/`, etc.).
+- A specific component's source has unusual patterns the codemod's
+  regexes don't catch.
 
-For Peer AI's 2700-LOC Workspace: 1 shell + 5 modal agents in parallel,
-each ~150-250 LOC of input, slowest ~2-3 min. Wall-clock = slowest, not
-sum. Don't artificially cap agent count.
+Spawn one agent per route in ONE parallel batch. Cornerstone-split
+when a route's source LOC > 800 (one shell agent + N sub-component
+agents). Wall-clock = slowest agent, not sum.
 
-### Per-route literal-port agent prompt template
+Per-route literal-port agent prompt:
 
 ```
 You are doing a LITERAL PORT of one Magic Patterns React page to
