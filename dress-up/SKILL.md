@@ -1041,7 +1041,7 @@ When you're ready for the design-system translation (Stage 4), run:
 
 # STAGE 4 — DS translation (~5-7 min, parallel-liberal)
 
-## Beat 4.1 — Verify checkpoint + re-enable audit + build DS manifest (~30s)
+## Beat 4.1 — Verify checkpoint + re-enable audit + build DS inventory (~30s)
 
 1. Verify `<out>/.dress-up/phase1-done.json` exists. If not, error:
    "no Phase 1 checkpoint; run --analyze first."
@@ -1049,14 +1049,15 @@ When you're ready for the design-system translation (Stage 4), run:
    `prebuild:audit-disabled` → `prebuild`.
 3. Read user's `--notes` / `--notes-text` if provided. Save to
    `<out>/.dress-up/phase2-notes.md`.
-4. Build DS manifest at `<out>/.dress-up/ds-manifest.md`. Required
-   sections (per-primitive tone enums are critical — agents regress
-   on these):
+4. Run `node ~/.claude/skills/dress-up/bin/inventory-ds.mjs <ds-clone> --out <out>/.dress-up/ds-inventory.json`. The inventory script extracts: primitive names + props interfaces + tone/variant enums per primitive, semantic color tokens from the DS Tailwind theme, Glyph icon roster (if present), AND audit-script path coverage (so we know whether the audit will actually catch violations). Cached on the DS clone's mtime hash — typically ~1s on cache hit, ~20s on a DS clone update.
+5. If the audit-script path check shows the audit doesn't cover `src/app/` directly, log a WARNING and rely on Beat 4.3's semantic check (`stage4-primitive-check.mjs`) as the gate.
+6. Build the human-readable manifest at `<out>/.dress-up/ds-manifest.md` by summarizing the inventory JSON. Required section:
 
 ```markdown
-## Per-primitive tone enums (READ THESE BEFORE USING tone= PROPS)
+## Per-primitive tone enums (READ THE PRIMITIVE FILE BEFORE USING tone= PROPS)
 
-Each primitive's tone union is DIFFERENT. NOT interchangeable:
+The inventory script extracted these tone/variant unions automatically.
+Each primitive's union is DIFFERENT. NOT interchangeable:
 
 - <Heading tone>: "ink" | "muted"
 - <Body tone>: "ink" | "muted" | "faint"
@@ -1064,22 +1065,51 @@ Each primitive's tone union is DIFFERENT. NOT interchangeable:
 - <MetaLabel tone>: "default" | "muted"
 - <Pill variant>: "outlined" | "filled" | "accent" | "ghost"
 
-When in doubt, drop the tone= prop and rely on the primitive's
-default tone. Or use a Tailwind utility class for tone (text-faint,
-text-muted, text-ink).
+The manifest is an INDEX of what exists, not a substitute for the
+primitive's source. Stage 4 agents must still read the actual file at
+`src/components/{category}/<PrimitiveName>.tsx` before using it
+(see the read-the-primitive rule in Beat 4.2). The manifest catches
+"does X exist?" The file read catches "what does X actually accept?"
 ```
 
-Plus the standard manifest sections (typography, layout, UI primitives,
-patterns, charts, color tokens, animation utilities, spacing buckets).
+Plus the standard manifest sections derived from the inventory JSON
+(typography, layout, UI primitives, patterns, charts, color tokens,
+animation utilities, spacing buckets, Glyph icon roster).
+
+7. If the DS lacks semantic color tokens (e.g., no `--color-warning`,
+   `--color-danger`, `--color-success`, `--color-info`), Stage 4 agents
+   are told to KEEP the existing Tailwind semantic colors (`bg-amber-50`,
+   `bg-red-50`, `bg-green-50`, `bg-blue-50`) rather than flatten them.
+   The manifest carries this flag forward.
 
 ## Beat 4.2 — Parallel DS translation (~4-5 min, parallel-liberal)
 
-One agent per route file in `<out>/src/app/`. Spawn in one parallel
-tool-call batch.
+The fan-out covers BOTH `<out>/src/app/**/page.tsx` route files AND
+`<out>/src/components/peer/*.tsx` consumer components. Stage 3 often
+creates new peer/ files from scratch; they need DS translation too.
+Skipping the peer/ folder leaves the seed half-translated.
 
-**Cornerstone-split rule applies here too**: if a route's Stage 3
-output > 800 LOC, split into shell + sub-component agents. Same
-pattern as Stage 1's split. Don't artificially cap agent count.
+Spawn the batch in one parallel tool-call group. Wall-clock = slowest
+agent.
+
+**Cornerstone-split is the DEFAULT** for any modal-shaped file
+(drawer, dialog, overlay panel) that has MULTIPLE conditional state
+branches — e.g., high-confidence + low-confidence + failed + propagation
+report. Split regardless of total LOC. Single-agent translation of
+multi-state modals has two failure modes: it brushes the LOC cap, and
+per-primitive tone-enum drift compounds across branches. Splitting
+makes each sub-agent's scope simple AND localizes enum-drift risk.
+
+When splitting a modal-shaped file:
+- Shell agent: writes the envelope (header chrome, footer, motion
+  wrapper, conditional dispatcher) at the existing file path.
+- Sub-component agents: each writes ONE state's content under
+  `src/components/peer/<DrawerName>/<StateName>.tsx` (or
+  `src/components/screens/<route>/<StateName>.tsx` for route-level
+  modals). Shell imports the sub-components.
+
+Fall back to single-agent translation for plain route pages and
+single-state components.
 
 ### Per-route Stage 4 agent prompt template
 
@@ -1096,9 +1126,32 @@ Read the existing file at {NEXT_FILE_PATH} — that's the Stage 3 finished
 structure. Translate to use peer-DS primitives without changing content,
 structure, or features.
 
-## DS manifest (the only primitives you may import)
+## DS manifest (INDEX of available primitives)
 
 {DS_MANIFEST_CONTENT}
+
+The manifest is an INDEX — it tells you what exists. It does NOT
+substitute for reading the primitive's source. See the next section.
+
+## Read the primitive file before using it (REQUIRED)
+
+Before writing JSX that uses primitive `<X>` (Card, Heading, Stack,
+Body, Cluster, MetaText, MetaLabel, Pill, Glyph, LinkButton, etc.):
+
+1. READ the actual primitive source at
+   `src/components/{category}/X.tsx` (the category is in the manifest).
+2. Verify the props interface, the tone/variant enum values, and
+   default behavior. Confirm the prop you intend to pass actually
+   exists on this primitive.
+3. Only after the read, write the JSX.
+
+You may skip the read for a primitive you already read in this agent
+run — but do not skip across agent runs based on memory.
+
+Do not rely on intuition or manifest summaries for prop names or enum
+values. Many primitives have non-obvious accepted tones (MetaText
+does not accept "muted"; MetaLabel does). The file is the source of
+truth.
 
 ## Notes from user (if any)
 
@@ -1196,7 +1249,7 @@ Covered above. Strip from Stage 3 file if present.
 Report at end: which primitives you swapped (one line summary).
 ```
 
-## Beat 4.3 — Build + audit + cleanup + final build (~1-2 min)
+## Beat 4.3 — Build + audit + semantic check + cleanup (~1-2 min)
 
 1. `cd <out> && npm run build` (audit runs via prebuild hook).
 2. If audit fails with mechanical violations (text-[Npx], raw flex
@@ -1209,6 +1262,24 @@ Report at end: which primitives you swapped (one line summary).
 4. If type errors: surface first 30 lines verbatim. Do NOT auto-fix
    in a loop. Common roots: missing Suspense wrapper post-translation,
    Table generic cast forgotten, type-import regression.
+5. Once the build passes, run the semantic check:
+   `node ~/.claude/skills/dress-up/bin/stage4-primitive-check.mjs <out>`.
+   This catches the "agent rolled its own Card-like div" class of
+   failure that the mechanical audit doesn't catch. Patterns flagged:
+   raw `<h1>`-`<h6>`, raw `<p className=...>`, `<div>` with
+   `border + rounded + p-N` (probably should be `<Card>`),
+   `<div>` with `flex flex-col gap-N` (should be `<Stack>`),
+   `<div>` with `flex items-* gap-N` (should be `<Cluster>`),
+   hex codes, `text-[Npx]` arbitrary sizes, external UI kit imports.
+6. If the semantic check flags violations:
+   - If < 10 violations: spawn ONE focused cleanup agent per offending
+     file. Scope: "convert these listed patterns to the named primitives,
+     change nothing else." Then re-run build + semantic check.
+   - If ≥ 10 violations OR persistent after one cleanup round: stop
+     and surface the full violation table to the user. Probably means
+     agents went rogue OR the DS is missing a primitive class. Don't
+     auto-fix further.
+7. If clean: ready for Beat 4.4.
 
 ## Beat 4.4 — Final report + dev server (~10s)
 
