@@ -126,10 +126,6 @@ Each concept in `concepts.json` is:
   "id": "kebab-id",
   "title": "Sentence-case title",
   "blurb": "Two-sentence value-focused blurb.",
-  "proposed_route": "/route/path",
-  "layout_type": "dashboard|queue|detail|form|timeline|audit",
-  "primary_regions": ["kebab-token", "..."],
-  "agent_involvement": "none|summary|suggestion|candidate-match",
   "lofi": [ /* region tree */ ]
 }
 ```
@@ -140,8 +136,6 @@ The top-level `concepts.json` envelope:
 {
   "product": "Product name",
   "primary_persona": "Name, Role",
-  "source_prd": "/path/or/'pasted'",
-  "generated_at": "ISO 8601",
   "subtitle": "optional override of the page subtitle",
   "concepts": [ /* concept objects */ ]
 }

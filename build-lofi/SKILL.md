@@ -1,13 +1,13 @@
 ---
 name: build-lofi
-description: Generate a single scrolling HTML page of lo-fi feature sketches from a PRD. Each sketch is one independent UI frame annotated with a short value-focused blurb. Uses a declarative JSON region tree rendered by a bundled client-side script; no main-thread HTML generation, no per-concept HTML files. Spawns N per-concept JSON-emitting agents in one parallel batch. Built for time-boxed founding-designer exercises where the goal is to put multiple feature concepts on the table in under a minute. Triggers: "build lo-fi", "build lofi", "lo-fi sketches", "feature sketches", "rough wireframes", "design concepts", "give me a few feature options", "wireframe these features". Composes upstream from /code-ready-prd (reads ./PRD.md if present). Pairs downstream into /build-hifi.
+description: Generate a single scrolling HTML page of lo-fi feature sketches from a PRD. Each sketch is one independent UI frame annotated with a short value-focused blurb. Uses a declarative JSON region tree rendered by a bundled client-side script; no main-thread HTML generation, no per-concept HTML files. Spawns N per-concept JSON-emitting agents in one parallel batch. Built for time-boxed founding-designer exercises where the goal is to put multiple feature concepts on the table in under a minute. Output is the served dev-server URL, intended to be pasted directly into Magic Patterns (or similar) to translate sketches into hi-fi. Triggers: "build lo-fi", "build lofi", "lo-fi sketches", "feature sketches", "rough wireframes", "design concepts", "give me a few feature options", "wireframe these features". Composes upstream from /code-ready-prd (reads ./PRD.md if present).
 ---
 
 # build-lofi v4
 
 ## What this skill produces
 
-For a given PRD, write one scrolling HTML page of N (default 6) independent feature sketches. Each sketch is a single UI frame with a value-focused blurb on its left. Output is a buffet for the designer to scan and pick from; the picks feed into /build-hifi.
+For a given PRD, write one scrolling HTML page of N (default 6) independent feature sketches. Each sketch is a single UI frame with a value-focused blurb on its left. Output is a buffet for the designer to scan and paste into Magic Patterns (or similar) for hi-fi translation. No machine-readable handoff contract; the served page is the artifact.
 
 ## Why v4 exists
 
@@ -53,12 +53,9 @@ Read PRD. Identify primary persona + the feature inventory. Decide N concepts (d
 - `id` (kebab-case)
 - Concept name (3–6 words)
 - Blurb (≤30 words, two sentences: what is on screen / value to persona)
-- `proposed_route` (`/`-prefixed kebab path)
-- `layout_type`: `dashboard` | `queue` | `detail` | `form` | `timeline` | `audit`
-- `primary_regions[]` (3–6 kebab tokens)
-- `agent_involvement`: `none` | `summary` | `suggestion` | `candidate-match`
+- Layout hint for the agent prompt (which dominant region to use, e.g. `queue-table` / `box.xl` / `side-by-side`).
 
-Hold the array in main-thread memory.
+Hold the array in main-thread memory. No machine-readable handoff fields (route, layout_type, agent_involvement) — those existed only for the old /build-hifi handoff.
 
 ### Beat 2: Project folder + asset copy
 
@@ -82,16 +79,14 @@ Per-concept prompts can be tight (~30–50 lines each) because the renderer enfo
 
 ### Beat 4: Merge JSON
 
-Main thread reads all N `_concept{N}.json` files in parallel, then writes `{project-dir}/concepts.json` with the envelope:
+Main thread reads all N `_concept{N}.json` files in parallel, then writes `{project-dir}/concepts.json` with the minimal envelope the renderer needs:
 
 ```json
 {
   "product": "...",
   "primary_persona": "Name, Role",
-  "source_prd": "absolute path or 'pasted'",
-  "generated_at": "ISO 8601 UTC",
   "subtitle": "optional",
-  "concepts": [ /* the N concept objects */ ]
+  "concepts": [ /* the N concept objects: id, title, blurb, lofi */ ]
 }
 ```
 
@@ -131,10 +126,6 @@ Top-level object:
   "id": "{kebab-id}",
   "title": "{concept name}",
   "blurb": "{<=30-word value-focused blurb, two sentences}",
-  "proposed_route": "{/route/path}",
-  "layout_type": "{dashboard|queue|detail|form|timeline|audit}",
-  "primary_regions": [...],
-  "agent_involvement": "{none|summary|suggestion|candidate-match}",
   "lofi": [ /* region tree using vocab in REGIONS.md */ ]
 }
 
@@ -155,12 +146,11 @@ Save to `{project-dir}/_concept{N}.json`. Return only the path.
 ## Stop condition
 
 Report:
-1. Path to `sketch.html` (project folder).
-2. Path to `concepts.json`.
-3. Server URL.
-4. One-line list of concept names with `id`s.
+1. Server URL (the headline — this is what gets pasted into Magic Patterns).
+2. Path to `sketch.html` (project folder).
+3. One-line list of concept names.
 
-Then stop. Do not auto-invoke /build-hifi.
+Then stop.
 
 ## Out of scope
 
@@ -181,4 +171,4 @@ Then stop. Do not auto-invoke /build-hifi.
 ## Files produced per run
 
 - `{project-dir}/sketch.html`, `lofi.css`, `lofi.js`, `REGIONS.md` (asset copies)
-- `{project-dir}/concepts.json` (the single source of truth; also the handoff to /build-hifi)
+- `{project-dir}/concepts.json` (renderer data; not a handoff contract)
